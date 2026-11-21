@@ -25,6 +25,7 @@ def settle_day(
     earned: int,
     reputation: float,
     money_after_shift: int,
+    wallet_before_shift: int = 0,
 ) -> dict:
     """Tính sao và thưởng; ``earned`` đã gồm giá món + boa.
 
@@ -42,7 +43,7 @@ def settle_day(
     fulfilled_count = sum(min(paid_by_dish.get(dish, 0), quantity)
                           for dish, quantity in plan["dishes"].items())
     revenue_goal = sum(menu[dish]["price"] * quantity for dish, quantity in plan["dishes"].items())
-    if any(not isinstance(qty, int) or qty < 0 for qty in paid_by_dish.values()) or earned < 0 or money_after_shift < 0:
+    if any(not isinstance(qty, int) or qty < 0 for qty in paid_by_dish.values()) or earned < 0 or money_after_shift < 0 or wallet_before_shift < 0:
         raise ValueError("Số khách và xu phải không âm")
     paid_ratio = fulfilled_count / planned_count
     revenue_ratio = earned / revenue_goal
@@ -53,6 +54,7 @@ def settle_day(
                 and reputation >= gate["min_reputation"]):
             stars = gate["count"]
     bonus = (day_reward["clear_bonus"] + stars * day_reward["bonus_per_star"]) if stars else 0
+    event_delta = money_after_shift - wallet_before_shift - earned
     return {
         "day": day,
         "planned_count": planned_count,
@@ -63,7 +65,8 @@ def settle_day(
         "reputation": reputation,
         "stars": stars,
         "bonus": bonus,
-        "total_earned_this_day": earned + bonus,
+        "event_money_delta": event_delta,
+        "total_earned_this_day": earned + event_delta + bonus,
         "money_after_reward": money_after_shift + bonus,
     }
 

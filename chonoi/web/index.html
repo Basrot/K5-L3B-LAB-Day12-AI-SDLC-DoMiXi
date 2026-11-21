@@ -81,7 +81,7 @@ function renderCampaignUI() {
   } else if(c.screen==='results'){
     bg('27-level-results.png');
     const r=c.result||{};
-    html=`<div class="campaign-panel"><h2>Màn ${c.day} · ${'★'.repeat(r.stars||0)}${'☆'.repeat(3-(r.stars||0))}</h2><p>Phục vụ ${r.fulfilled_count||0} món đúng kế hoạch · Uy tín ${Number(r.reputation||0).toFixed(1)}</p><p>Khách trả ${r.earned_from_customers||0} xu + thưởng ${r.bonus||0} xu = <strong>${r.total_earned_this_day||0} xu</strong></p><div class="campaign-actions"><button data-campaign="shop">Nâng cấp</button><button data-campaign="map">Chọn màn</button></div></div>`;
+    html=`<div class="campaign-panel"><h2>Màn ${c.day} · ${'★'.repeat(r.stars||0)}${'☆'.repeat(3-(r.stars||0))}</h2><p>Phục vụ ${r.fulfilled_count||0} món đúng kế hoạch · Uy tín ${Number(r.reputation||0).toFixed(1)}</p><p>Khách trả ${r.earned_from_customers||0} xu · Sự kiện ${r.event_money_delta||0} xu · Thưởng ${r.bonus||0} xu</p><p>Xu thay đổi: <strong>${r.total_earned_this_day||0}</strong> · Ví hiện tại: ${c.wallet} xu</p><div class="campaign-actions"><button data-campaign="shop">Nâng cấp</button><button data-campaign="map">Chọn màn</button></div></div>`;
   } else if(c.screen==='shop'){
     bg(shopItem?'22-upgrade-detail-template.png':'16-upgrade-shop.png');
     if(!shopItem){
@@ -146,9 +146,69 @@ function walkPathToSeat(seatX, seatZ, isPainted) {
   return [gate, deck, [seatX, seatZ]];
 }
 let audioContext = null, soundEnabled = false, lastSoundEvent = '';
+let chaseSource = null, chaseBuffer = null, chaseLoading = null, audioTouched = false;
+function loadChaseMusic() {
+  if (!chaseLoading) chaseLoading = fetch('/art/chieu-troi-mua.mp3')
+    .then(response => { if (!response.ok) throw new Error('Không tải được nhạc'); return response.arrayBuffer(); })
+    .then(data => audioContext.decodeAudioData(data))
+    .then(buffer => { chaseBuffer = buffer; })
+    .catch(() => { chaseLoading = null; soundButton.title = 'Không tải được bài nhạc; hãy khởi động lại server'; });
+  return chaseLoading;
+}
+let musicKey = '', musicTimer = null, musicVoices = [], musicStep = 0;
+const weatherTunes = {
+  sun: [60,64,67,72,67,64,62,67],
+  rain: [48,55,51,55,50,57,53,57],
+  snow: [84,79,81,76,79,74,76,72],
+  fog: [48,49,55,0,51,50,55,0],
+  wind: [72,60,74,62,76,64,71,59],
+  bubbles: [72,79,84,79,74,81,86,81],
+  fish_rain: [60,67,72,60,62,69,74,62],
+  rainbow: [60,62,64,67,69,72,76,79],
+  quan: [60,64,67,69,67,64,62,55]
+};
+function stopMusic() {
+  clearInterval(musicTimer); musicTimer = null;
+  musicVoices.forEach(voice => { try { voice.stop(); } catch (_) {} });
+  musicVoices = [];
+  if (chaseSource) { try { chaseSource.stop(); } catch (_) {} chaseSource.disconnect(); chaseSource = null; }
+}
+function syncMusic() {
+  const key = !soundEnabled || document.hidden || !snap || snap.finished || transitioning ? ''
+    : snap.mode === 'gather' && snap.pursuer?.active ? 'chase'
+    : snap.mode === 'gather' ? snap.weather : 'quan';
+  if (key === musicKey) return;
+  stopMusic(); musicKey = key; musicStep = 0;
+  if (!key || !audioContext) return;
+  if (key === 'chase' && chaseBuffer) {
+    chaseSource = audioContext.createBufferSource(); chaseSource.buffer = chaseBuffer; chaseSource.loop = true;
+    const gain = audioContext.createGain(); gain.gain.value = .65;
+    chaseSource.connect(gain); gain.connect(audioContext.destination);
+    chaseSource.onended = () => gain.disconnect(); chaseSource.start();
+    return;
+  }
+  if (key === 'chase') loadChaseMusic().then(() => { if (chaseBuffer && musicKey === 'chase') { musicKey = ''; syncMusic(); } });
+  const melody = weatherTunes[key] || weatherTunes.sun;
+  const beat = key === 'wind' || key === 'fish_rain' ? 180 : key === 'fog' ? 450 : 280;
+  function note() {
+    if (!soundEnabled || audioContext.state !== 'running') return;
+    const pitch = melody[musicStep++ % melody.length];
+    if (!pitch) return;
+    const now = audioContext.currentTime, osc = audioContext.createOscillator(), gain = audioContext.createGain();
+    osc.type = key === 'wind' || key === 'fish_rain' ? 'triangle' : 'sine';
+    osc.frequency.value = 440 * 2 ** ((pitch-69)/12);
+    gain.gain.setValueAtTime(0,now);gain.gain.linearRampToValueAtTime(.12,now+.025);
+    gain.gain.exponentialRampToValueAtTime(.0001,now+beat/1000*.9);
+    osc.connect(gain);gain.connect(audioContext.destination);
+    musicVoices.push(osc);osc.onended=()=>{musicVoices=musicVoices.filter(v=>v!==osc);osc.disconnect();gain.disconnect();};
+    osc.start(now);osc.stop(now+beat/1000);
+  }
+  note(); musicTimer = setInterval(note,beat);
+}
+document.addEventListener('visibilitychange',syncMusic);
 const soundButton = document.getElementById('sound-toggle');
-soundButton.addEventListener('click', async () => {
-  soundEnabled = !soundEnabled;
+async function setSound(enabled) {
+  audioTouched = true; soundEnabled = enabled;
   if (soundEnabled && !audioContext) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (AudioCtx) audioContext = new AudioCtx(); else soundEnabled = false;
@@ -157,7 +217,17 @@ soundButton.addEventListener('click', async () => {
   soundButton.textContent = soundEnabled ? '🔊 Âm thanh' : '🔇 Âm thanh';
   soundButton.setAttribute('aria-pressed', String(soundEnabled));
   if (soundEnabled) playCue('water');
-});
+  if (soundEnabled) loadChaseMusic();
+  syncMusic();
+}
+soundButton.textContent = '🔊 Bật nhạc';
+soundButton.addEventListener('click', () => setSound(!soundEnabled));
+function unlockSound(event) {
+  if (!audioTouched && event.target !== soundButton) setSound(true);
+  else if (soundEnabled && audioContext?.state === 'suspended') audioContext.resume().then(() => { musicKey = ''; syncMusic(); });
+}
+addEventListener('pointerdown',unlockSound);
+addEventListener('keydown',unlockSound);
 function playCue(kind) {
   if (!soundEnabled || !audioContext) return;
   const now = audioContext.currentTime;
@@ -199,6 +269,8 @@ const seatedArt = new Image(); seatedArt.src = '/art/16-seated-waiting.png';
 const foodArt = new Image(); foodArt.src = '/art/02-items-food.png';
 const dishesArt = new Image(); dishesArt.src = '/art/14-dishes.png';
 const sunsetArt = new Image(); sunsetArt.src = '/art/26-day-to-night.png';
+const khaBanhArt = new Image(); khaBanhArt.src = '/art/17-kha-banh.png';
+const congAnArt = new Image(); congAnArt.src = '/art/18-cong-an.png';
 const dishCell={ca_loc_nuong_trui:0,goi_bong_sung:1,lau_ca_linh_dien_dien:2,canh_chua_ca_loc:2,ca_keo_nuong:0,lau_mam:2,tom_hap:3,ca_ro_chien:4,cua_hap:5,ca_bong_kho:6};
 function itemName(kind) { return snap.catalog?.[kind]?.label || KIND_NAME[kind] || kind; }
 function dishName(kind) { return snap.menu_labels?.[kind] || kind; }
@@ -299,6 +371,7 @@ async function poll() {
     snap = await r.json();
     renderCampaignUI();
     hearEvents(snap.events);
+    syncMusic();
     offline = false;
     document.querySelectorAll('[data-mode]').forEach(b => {
       b.disabled = transitioning || (snap.mode === 'gather' && snap.finished && snap.reason === 'fainted');
@@ -791,12 +864,77 @@ function drawQuan(w, h) {
     });
     ctx.restore();
   });
+
+  // Khá Bảnh (đi vào, thu bảo kê xong rời quán, hoặc bị công an bắt)
+  if (snap.kha_banh && snap.kha_banh.active) {
+    const kb = snap.kha_banh;
+    const kx = sx(kb.pos[0]), ky = sy(kb.pos[1]);
+    const arrested = kb.state === 'arrested';
+    const action = kb.action_ticks > 0;
+    const leaving = kb.state === 'leaving';
+    const row = (arrested || action) ? 1 : 0;
+    const col = arrested ? 2 : (action ? (Math.floor(snap.tick / 6) % 4) : (Math.floor(snap.tick / 8) % 4));
+    const bob = action ? Math.sin(snap.tick / 3) * 5 : Math.sin(snap.tick / 8) * 2;
+    sprite(khaBanhArt, col, row, 4, 2, kx, ky + bob - 0.45 * s, 1.9 * s, kb.facing_left);
+    const tag = arrested ? '🚨 BẢNH BỊ BẮT!' : (action ? '💸 ĐÃ THU BẢO KÊ (rời quán)' : (leaving ? 'Khá Bảnh (rời quán)' : 'Khá Bảnh'));
+    const color = arrested ? '#ff1744' : (action ? '#ff9100' : '#fbc02d');
+    pill(tag, kx, ky - 1.25 * s + bob, { size: (arrested || action) ? 12 : 10.5, color, border: color });
+    if (action) {
+      ctx.fillStyle = '#ffeb3b';
+      ctx.font = `${Math.max(12, Math.min(18, s * 0.65))}px system-ui`;
+      ctx.textAlign = 'center';
+      const sparkX = kx + Math.sin(snap.tick / 4) * s * 0.7;
+      const sparkY = ky - s * 0.5 + Math.cos(snap.tick / 4) * s * 0.4;
+      ctx.fillText('💸 -50k', sparkX, sparkY);
+    }
+  }
+
+  // Chú Công An tuần tra & bảo vệ quán
+  if (snap.cong_an && snap.cong_an.active) {
+    const ca = snap.cong_an;
+    const cx = sx(ca.pos[0]), cy = sy(ca.pos[1]);
+    const chasing = ca.state === 'chasing';
+    const escorting = ca.state === 'escorting';
+    const row = (chasing || escorting) ? 1 : 0;
+    const col = chasing ? 3 : (escorting ? 2 : (Math.floor(snap.tick / 8) % 4));
+    const bob = chasing ? Math.sin(snap.tick / 2) * 5 : Math.sin(snap.tick / 8) * 2;
+    sprite(congAnArt, col, row, 4, 2, cx, cy + bob - 0.45 * s, 1.9 * s, ca.facing_left);
+    const caTag = chasing ? '🚨 ĐANG BẮT KHÁ BẢNH!' : (escorting ? '👮‍♂️ DẪN GIẢI VỀ ĐỒN' : '👮‍♂️ Chú Công An (E báo tin)');
+    const caColor = chasing ? '#ff1744' : (escorting ? '#00e676' : '#69f0ae');
+    pill(caTag, cx, cy - 1.25 * s + bob, { size: (chasing || escorting) ? 12 : 10.5, color: caColor, border: caColor });
+  }
+
+  // Banner thông báo sự kiện đặc biệt
+  const specialEv = (snap.events || []).slice().reverse().find(e =>
+    ['bao_ke_hit', 'police_alerted', 'kha_banh_arrested', 'police_friendly', 'kha_banh_left'].includes(e.name) && snap.tick - e.tick < 160
+  );
+  if (specialEv) {
+    const isDanger = ['bao_ke_hit', 'police_alerted'].includes(specialEv.name);
+    const isSuccess = specialEv.name === 'kha_banh_arrested';
+    ctx.fillStyle = isDanger ? 'rgba(211, 47, 47, .92)' : (isSuccess ? 'rgba(46, 125, 50, .95)' : 'rgba(30, 80, 100, .9)');
+    const boxW = Math.min(w - 20, 560);
+    ctx.fillRect(w / 2 - boxW / 2, top + 5, boxW, 30);
+    const msg = specialEv.data?.quote || (specialEv.name === 'kha_banh_arrested' ? 'Đã bắt Khá Bảnh (+50k thưởng, +0.5 uy tín)!' : 'Sự kiện');
+    text((isDanger ? '⚠️ ' : (isSuccess ? '⭐ ' : '📢 ')) + msg, w / 2, top + 25, {
+      size: 13,
+      align: 'center',
+      color: '#fff'
+    });
+  }
+
   // người chơi (phục vụ di chuyển trên sàn gỗ quán)
   const p = snap.player;
   if (p) {
     const px = sx(p.pos[0]), py = sy(p.pos[1]);
     const vel = p.vel || [0, 0];
     const flipP = vel[0] < -0.05;
+    if (snap.invuln_ticks > 0 && Math.floor(snap.tick / 4) % 2 === 0) {
+      ctx.strokeStyle = "rgba(255, 82, 82, .85)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(px, py - 0.42 * s, 0.95 * s, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     if (meta.interact_radius) {
       ctx.strokeStyle = "rgba(255, 240, 185, 0.55)";
       ctx.lineWidth = 1.5;

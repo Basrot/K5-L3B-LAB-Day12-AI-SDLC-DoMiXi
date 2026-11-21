@@ -157,3 +157,28 @@ class LiveWorldTest(unittest.TestCase):
         g.switch_mode('quan')
         self.assertFalse(g.session.done)
         self.assertEqual(g.session.sim.stock, {'ca_loc': 1, 'ca_ro': 1})
+
+    def test_kha_banh_and_cong_an_interactions(self):
+        g = LiveGame('quan', self.t, {}, 1)
+        sim = g.session.sim
+        self.assertIn('kha_banh', sim.snapshot())
+        self.assertIn('cong_an', sim.snapshot())
+        sim.money = 200
+        sim.kha_banh['active'] = True
+        sim.kha_banh['state'] = 'patrolling'
+        sim.kha_banh['pos'] = [8.0, 5.0]
+        sim.pos = [8.0, 5.0]
+        events = sim.step(inp())
+        self.assertTrue(any(e[0] == 'bao_ke_hit' for e in events))
+        self.assertEqual(sim.money, 150)
+        self.assertEqual(sim.kha_banh['state'], 'leaving')
+        sim.kha_banh['active'] = True
+        sim.kha_banh['state'] = 'patrolling'
+        sim.cong_an['active'] = True
+        sim.cong_an['state'] = 'patrolling'
+        sim.cong_an['pos'] = [5.0, 5.0]
+        sim.pos = [5.0, 5.0]
+        ev_alert = sim.step(inp('interact'))
+        self.assertTrue(any(e[0] == 'police_alerted' for e in ev_alert))
+        self.assertEqual(sim.cong_an['state'], 'chasing')
+

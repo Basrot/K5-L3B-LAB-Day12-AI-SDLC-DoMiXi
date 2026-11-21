@@ -25,7 +25,7 @@ Tiền từ một khách = giá món + boa. Boa bằng 20% giá món, làm tròn
 | 2 | ≥ 70% | ≥ 65% | ≥ 3,0 |
 | 3 | 100% | ≥ 90% | ≥ 3,5 |
 
-Thưởng thêm = thưởng qua màn + (số sao × thưởng mỗi sao), chỉ khi đạt ít nhất 1 sao. Xu kiếm trong màn = `earned` + thưởng thêm. Ví sau màn = ví sau ca quán + thưởng thêm; **không cộng `earned` lần hai**.
+Thưởng thêm = thưởng qua màn + (số sao × thưởng mỗi sao), chỉ khi đạt ít nhất 1 sao. Xu thay đổi trong màn = tiền khách trả + xu từ sự kiện (thưởng công an, mất do bảo kê) + thưởng thêm. Ví sau màn = ví sau ca quán + thưởng thêm; **không cộng tiền khách trả lần hai**. Xu sự kiện = ví sau ca quán − ví trước ca quán − tiền khách trả.
 
 | Màn | Suất kế hoạch | Mục tiêu doanh thu | Thưởng qua màn | Thưởng mỗi sao | Tổng xu ví dụ khi phục vụ đủ và mọi khách đều boa |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -56,6 +56,6 @@ Mỗi món mặc định ở cấp hiển thị 1. Nút chỉ mua **một bậc 
 ## Điểm nối với code hai ca
 
 1. Khi khách phát sự kiện `paid`, ca quán đã cộng tiền vào `money` và `earned`; đếm `paid` theo `dish_id` trong lượt.
-2. Lúc ca quán đóng, gọi `settle_day` từ `chonoi/progression.py` với ngày, `paid_by_dish`, `earned`, `reputation`, `money_after_shift`. Lưu kết quả và hiển thị trên ảnh tổng kết.
+2. Lúc ca quán đóng, gọi `settle_day` từ `chonoi/progression.py` với ngày, `paid_by_dish`, `earned`, `reputation`, `money_after_shift`, `wallet_before_shift`. Lưu kết quả và hiển thị trên ảnh tổng kết.
 3. Nút cửa hàng đọc `upgrades` trong dữ liệu. Gọi `buy_upgrade` với ví và cấp hiện tại; ghi ví/cấp mới vào tiến độ người chơi. Chỉ áp chỉ số đã mua vào ca lặn kế tiếp.
 4. Bản đồ đọc sao cao nhất từng màn để mở khóa. Giữ thưởng và đồ lặn này ngoài headless cho tới khi nhóm thống nhất thay đổi contract.

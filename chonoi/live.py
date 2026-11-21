@@ -116,7 +116,8 @@ class LiveGame:
                 if self.mode == 'quan':
                     self.result = settle_day(self.contract, self.progression, self.day,
                         paid_by_dish=self.paid_by_dish, earned=s.sim.shift_earned,
-                        reputation=s.sim.reputation, money_after_shift=s.sim.money)
+                        reputation=s.sim.reputation, money_after_shift=s.sim.money,
+                        wallet_before_shift=self.wallet)
                     self.wallet = self.result['money_after_reward']
                     self.reputation = s.sim.reputation
                     self.stars[str(self.day)] = max(self.stars.get(str(self.day), 0), self.result['stars'])
@@ -379,12 +380,13 @@ class _Handler(BaseHTTPRequestHandler):
                        '24-title-screen.png', '25-level-select.png', '26-day-to-night.png',
                        '27-level-results.png', '29-intro-father-teaches-text.png',
                        '30-intro-father-injured-text.png', '31-intro-ut-sen-decides-text.png',
-                       '32-intro-first-departure-text.png'}
+                       '32-intro-first-departure-text.png', '17-kha-banh.png', '18-cong-an.png',
+                       'chieu-troi-mua.mp3'}
             if name not in allowed:
                 self._send(404, b'{}')
                 return
             asset = os.path.join(os.path.dirname(WEB_DIR), '..', 'assets', 'art-pack', name)
-            ctype = 'image/jpeg' if name.endswith(('.jpg', '.jpeg')) else 'image/png'
+            ctype = 'audio/mpeg' if name.endswith('.mp3') else ('image/jpeg' if name.endswith(('.jpg', '.jpeg')) else 'image/png')
             try:
                 with open(asset, 'rb') as f:
                     self._send(200, f.read(), ctype)
