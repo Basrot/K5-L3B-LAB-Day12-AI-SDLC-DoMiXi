@@ -103,7 +103,7 @@ class LiveWorldTest(unittest.TestCase):
         g.session.sim.hold = ['ca_ro', 'ca_loc']
         g.switch_mode('quan')
         self.assertEqual(g.session.sim.stock, {'ca_ro': 1, 'ca_loc': 1})
-        self.assertEqual(len(g.session.sim.tables), 4)
+        self.assertEqual(len(g.session.sim.tables), 3)  # 3 bàn gỗ khớp ảnh nền 15-quan-cho-noi.jpg (headless vẫn 4 bàn v1.1)
         self.assertTrue(all(t.get('label') for t in g.session.sim.tables))
 
     def test_restaurant_cook_serve_eat_and_pay(self):

@@ -121,6 +121,9 @@ class LiveQuanSim(QuanSim):
         labels = {k: v.get('label', self.world['dish_labels'].get(k, k)) for k, v in self.menu.items()}
         for table, source in zip(snap['tables'], self.tables):
             table['label'] = source['label']
+            table['painted'] = bool(source.get('painted', False))
+        for stove, source in zip(snap['stoves'], self.stoves):
+            stove['painted'] = bool(source.get('painted', False))
         snap.update(menu_labels=labels, catalog=self.world['catalog'], demo_stock=self.demo_stock,
                     elapsed=self.elapsed)
         return snap

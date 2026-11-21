@@ -22,6 +22,13 @@ class LiveGatherSim(GatherSim):
         self.pursuer = {'active': False, 'pos': list(self.pos), 'label': self.world['pursuer']['label'],
                         'hug_ticks_left': 0, 'hug_pos': list(self.pos)}
         self.extras = json.loads((Path(__file__).parent.parent / 'live_gather.json').read_text(encoding='utf-8'))
+        existing_fish_ids = {f['id'] for f in self.fish}
+        for f in self.t.get('live_extra_fish', []):
+            fid = f['id'] if f['id'] not in existing_fish_ids else self.ids.new('F')
+            existing_fish_ids.add(fid)
+            self.ids.reserve(fid)
+            self.fish.append({'id': fid, 'kind': f['kind'], 'pos': [float(c) for c in f['pos']],
+                              'heading_deg': f.get('heading_deg', 0)})
         self.collectibles = [dict(n, id=self.ids.new('L'), ready=True)
                              for n in self.extras['collectibles'] + self.world['collectibles']]
         self.collection = []

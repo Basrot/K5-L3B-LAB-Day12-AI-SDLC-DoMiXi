@@ -15,7 +15,7 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<nav aria-label="Chọn cảnh"><button data-mode="gather">☀ Sông</button><button data-mode="quan">♨ Quán · đem giỏ vào</button><button data-mode="quan" data-demo="true">Quán mẫu</button></nav>
+<nav aria-label="Chọn cảnh"><button data-mode="gather">☀ Sông</button><button data-mode="quan">♨ Quán · đem giỏ vào</button><button data-mode="quan" data-demo="true">Quán mẫu</button><button id="sound-toggle" aria-pressed="false">🔇 Âm thanh</button></nav>
 <script>
 "use strict";
 /*
@@ -26,17 +26,98 @@
 const cv = document.getElementById("c");
 const ctx = cv.getContext("2d");
 let snap = null, offline = false, transitioning = false;
-const restaurantArt = new Image(); restaurantArt.src = '/art/05-restaurant-scene.png';
+// Hoạt ảnh khách đi vào từ cầu gỗ và rời quán (chỉ hiển thị client, không ảnh hưởng sim/headless)
+const customerWalkIn = new Map();
+const leavingCustomers = [];
+let prevQuanCustomers = new Map();
+let lastQuanTick = -1, quanSeenOnce = false;
+function resetQuanActors() {
+  customerWalkIn.clear();
+  leavingCustomers.length = 0;
+  prevQuanCustomers.clear();
+  lastQuanTick = -1;
+  quanSeenOnce = false;
+}
+function samplePath(pts, t) {
+  const clamped = Math.max(0, Math.min(1, t));
+  let total = 0;
+  const segs = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const len = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+    segs.push([pts[i], pts[i + 1], len]);
+    total += len;
+  }
+  if (!total) return { pos: pts[pts.length - 1], dx: 0 };
+  let target = clamped * total;
+  for (const [a, b, len] of segs) {
+    if (target <= len || len === 0) {
+      const f = len ? target / len : 1;
+      return { pos: [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f], dx: b[0] - a[0] };
+    }
+    target -= len;
+  }
+  const last = segs[segs.length - 1];
+  return { pos: pts[pts.length - 1], dx: last ? last[1][0] - last[0][0] : 0 };
+}
+function walkPathToSeat(seatX, seatZ, isPainted) {
+  const gate = [7.75, 0.35], deck = [7.75, 2.5];
+  if (isPainted) return [gate, deck, [10.8, Math.max(3.2, seatZ - 0.6)], [seatX, seatZ]];
+  return [gate, deck, [seatX, seatZ]];
+}
+let audioContext = null, soundEnabled = false, lastSoundEvent = '';
+const soundButton = document.getElementById('sound-toggle');
+soundButton.addEventListener('click', async () => {
+  soundEnabled = !soundEnabled;
+  if (soundEnabled && !audioContext) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) audioContext = new AudioCtx(); else soundEnabled = false;
+  }
+  if (soundEnabled && audioContext.state === 'suspended') await audioContext.resume();
+  soundButton.textContent = soundEnabled ? '🔊 Âm thanh' : '🔇 Âm thanh';
+  soundButton.setAttribute('aria-pressed', String(soundEnabled));
+  if (soundEnabled) playCue('water');
+});
+function playCue(kind) {
+  if (!soundEnabled || !audioContext) return;
+  const now = audioContext.currentTime;
+  const notes = kind === 'water' ? [[310,.08,'sine'],[240,.11,'sine']]
+    : kind === 'cooking' ? [[180,.1,'triangle'],[250,.14,'triangle']]
+    : kind === 'ready' ? [[660,.12,'sine'],[880,.2,'sine']]
+    : kind === 'served' ? [[520,.1,'sine'],[690,.1,'sine'],[820,.22,'sine']]
+    : kind === 'rain' ? [[260,.13,'triangle'],[190,.2,'triangle']]
+    : [[420,.12,'sine'],[580,.18,'sine']];
+  notes.forEach(([hz,duration,type],i)=>{
+    const osc=audioContext.createOscillator(),gain=audioContext.createGain();
+    osc.type=type;osc.frequency.setValueAtTime(hz,now+i*.075);
+    gain.gain.setValueAtTime(.0001,now+i*.075);gain.gain.exponentialRampToValueAtTime(.075,now+i*.075+.018);
+    gain.gain.exponentialRampToValueAtTime(.0001,now+i*.075+duration);
+    osc.connect(gain);gain.connect(audioContext.destination);osc.start(now+i*.075);osc.stop(now+i*.075+duration+.01);
+  });
+}
+function hearEvents(events) {
+  for(const e of events||[]) {
+    const key=`${String(e.tick).padStart(8,'0')}:${e.name}:${e.data?.order_id||e.data?.fish_id||''}`;
+    if(key<=lastSoundEvent)continue;
+    lastSoundEvent=key;
+    if(e.name==='dive'||e.name==='surface'||e.name==='fish_caught'||e.name==='treasure_picked')playCue('water');
+    else if(e.name==='weather_changed'&&e.data?.weather==='rain')playCue('rain');
+    else if(e.name==='cook_started')playCue('cooking');
+    else if(e.name==='dish_ready'||e.name==='dish_picked')playCue('ready');
+    else if(e.name==='served'||e.name==='paid')playCue('served');
+  }
+}
 const riverArt = new Image(); riverArt.src = '/art/04-river-scene.png';
+const quanArt = new Image(); quanArt.src = '/art/15-quan-cho-noi.jpg';
 const diveArt = new Image(); diveArt.src = '/art/10-underwater-animation.png';
 const surfaceArt = new Image(); surfaceArt.src = '/art/01-ut-sen.png';
 const pursuerArt = new Image(); pursuerArt.src = '/art/11-rain-pursuer.png';
 const lifeArt = new Image(); lifeArt.src = '/art/12-river-life.png';
 const propsArt = new Image(); propsArt.src = '/art/03-props-npcs.png';
 const diningArt = new Image(); diningArt.src = '/art/13-dining-cast.png';
+const seatedArt = new Image(); seatedArt.src = '/art/16-seated-waiting.png';
 const foodArt = new Image(); foodArt.src = '/art/02-items-food.png';
 const dishesArt = new Image(); dishesArt.src = '/art/14-dishes.png';
-const dishCell={ca_loc_nuong_trui:0,goi_bong_sung:1,lau_ca_linh_dien_dien:2,tom_hap:3,ca_ro_chien:4,cua_hap:5,ca_bong_kho:6};
+const dishCell={ca_loc_nuong_trui:0,goi_bong_sung:1,lau_ca_linh_dien_dien:2,canh_chua_ca_loc:2,ca_keo_nuong:0,lau_mam:2,tom_hap:3,ca_ro_chien:4,cua_hap:5,ca_bong_kho:6};
 function itemName(kind) { return snap.catalog?.[kind]?.label || KIND_NAME[kind] || kind; }
 function dishName(kind) { return snap.menu_labels?.[kind] || kind; }
 function sprite(img, col, row, cols, rows, x, y, size, flip=false, angle=0) {
@@ -96,7 +177,7 @@ document.querySelectorAll('[data-mode]').forEach(button => button.addEventListen
   down.clear(); queue.length=0;
   await fetch('/input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({move:[0,0],interact:false,catch:false})});
   await fetch('/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:button.dataset.mode,demo:button.dataset.demo==='true'})});
-  lastSent=''; button.blur();
+  lastSent='';lastSoundEvent=''; resetQuanActors(); button.blur();
 }));
 async function flush() {
   if (inflight) return;
@@ -116,7 +197,7 @@ addEventListener("keydown", (e) => {
   if (MOVE_KEYS[k]) { down.add(MOVE_KEYS[k]); e.preventDefault(); }
   else if (k === "e") down.add("interact");
   else if (k === " ") { down.add("catch"); e.preventDefault(); }
-  else if (k === "r") { fetch("/restart", { method: "POST" }); lastSent = ""; down.clear(); }
+  else if (k === "r") { fetch("/restart", { method: "POST" }); lastSent = "";lastSoundEvent=''; resetQuanActors(); down.clear(); }
   pushInput();
 });
 addEventListener("keyup", (e) => {
@@ -133,6 +214,7 @@ async function poll() {
   try {
     const r = await fetch("/state", { cache: "no-store" });
     snap = await r.json();
+    hearEvents(snap.events);
     offline = false;
     document.querySelectorAll('[data-mode]').forEach(b => {
       b.disabled = transitioning || (snap.mode === 'gather' && snap.finished && snap.reason === 'fainted');
@@ -410,6 +492,21 @@ function drawGather(w, h) {
   text("S ↓ lặn · W ↑ nổi · A/D bơi · E nhặt/hái/cập bến · Space bắt cá · R chơi lại", w - 10, h - 14, { size: 12, align: "right", color: "#9fb3c0" });
 }
 
+function pill(s, x, y, o = {}) {
+  const sz = o.size || 11;
+  ctx.font = `600 ${sz}px system-ui, sans-serif`;
+  const padX = 7, h = sz + 7;
+  const w = ctx.measureText(s).width + padX * 2;
+  ctx.fillStyle = o.bg || "rgba(26, 15, 7, 0.78)";
+  ctx.beginPath();
+  ctx.roundRect(x - w / 2, y - h / 2, w, h, 6);
+  ctx.fill();
+  ctx.strokeStyle = o.border || "rgba(240, 200, 128, 0.55)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  text(s, x, y + sz * 0.35, { size: sz, align: "center", color: o.color || "#fff5da" });
+}
+
 // ----- cảnh QUÁN: nhìn từ trên xuống, x sang phải, z lên (bắc) -----
 function drawQuan(w, h) {
   const meta = snap.meta || {};
@@ -418,55 +515,208 @@ function drawQuan(w, h) {
   const s = Math.max(1, Math.min((w - 40) / X, (h - top - bottom) / Z));
   const ox = (w - s * X) / 2, oy = top;
   const sx = (x) => ox + x * s, sy = (z) => oy + (Z - z) * s;
-  ctx.fillStyle = "#c9a36b"; ctx.fillRect(sx(0), sy(Z), X * s, Z * s);
-  if (restaurantArt.complete && restaurantArt.naturalWidth) ctx.drawImage(restaurantArt, sx(0), sy(Z), X*s, Z*s);
-  for(let z=0;z<Z;z+=.5){ctx.strokeStyle='rgba(80,42,18,.15)';ctx.beginPath();ctx.moveTo(sx(0),sy(z));ctx.lineTo(sx(X),sy(z));ctx.stroke();}
-  text('QUÁN ÚT SEN · GÓC CHỢ NỔI',sx(X/2),sy(Z)+25,{size:17,align:'center',color:'#49301b'});
-  ctx.strokeStyle = "#6b4a2b"; ctx.lineWidth = 4; ctx.strokeRect(sx(0), sy(Z), X * s, Z * s);
-  // bếp
+  const hasBg = quanArt.complete && quanArt.naturalWidth > 0;
+  if (hasBg) {
+    ctx.drawImage(quanArt, sx(0), sy(Z), X * s, Z * s);
+  } else {
+    ctx.fillStyle = "#c9a36b"; ctx.fillRect(sx(0), sy(Z), X * s, Z * s);
+    for(let z=0;z<Z;z+=.5){ctx.strokeStyle='rgba(80,42,18,.15)';ctx.beginPath();ctx.moveTo(sx(0),sy(z));ctx.lineTo(sx(X),sy(z));ctx.stroke();}
+  }
+  ctx.strokeStyle = "#6b4a2b"; ctx.lineWidth = 3; ctx.strokeRect(sx(0), sy(Z), X * s, Z * s);
+  pill('QUÁN ÚT SEN · NHÀ BÈ CHỢ NỔI', sx(X / 2), sy(Z) + 18, { size: 13, color: '#ffe8a8' });
+  // bếp (khớp 2 bếp lò trong nền ảnh quán)
   (snap.stoves || []).forEach((st) => {
-    const col = st.state === "cooking" ? "#e8892b" : st.state === "ready" ? "#6fbf5a" : "#6d6d72";
-    const cell=st.state==='cooking'?1:st.state==='ready'?2:0;
-    if(!sprite(propsArt,cell,1,4,4,sx(st.pos[0]),sy(st.pos[1]),1.8*s)){
-      ctx.fillStyle = col; ctx.fillRect(sx(st.pos[0]) - 0.8 * s, sy(st.pos[1]) - 0.8 * s, 1.6 * s, 1.6 * s);}
-    text(st.id+' · '+(st.state==='cooking'?'Đang nấu':st.state==='ready'?'E lấy món':'E nấu đơn đầu'), sx(st.pos[0]), sy(st.pos[1]) + s, { size: 12, align: "center", color: "#38210c" });
-    if (st.dish) text(dishName(st.dish), sx(st.pos[0]), sy(st.pos[1]) - 0.95 * s, { size: 11, align: "center", color: "#2a1a0a" });
-    if (st.state === "cooking" && st.cook_ticks_left !== undefined) text(Math.ceil(st.cook_ticks_left / 60) + "s", sx(st.pos[0]), sy(st.pos[1]) + 1.25 * s, { size: 11, align: "center", color: "#2a1a0a" });
+    const bx = sx(st.pos[0]), by = sy(st.pos[1]);
+    const col = st.state === "cooking" ? "#f59e0b" : st.state === "ready" ? "#4ade80" : "#cbd5e1";
+    if (!hasBg || !st.painted) {
+      const cell = st.state === 'cooking' ? 1 : st.state === 'ready' ? 2 : 0;
+      if (!sprite(propsArt, cell, 1, 4, 4, bx, by, 1.8 * s)) {
+        ctx.fillStyle = col; ctx.fillRect(bx - 0.8 * s, by - 0.8 * s, 1.6 * s, 1.6 * s);
+      }
+    } else if (st.state !== 'idle') {
+      ctx.save();
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 3;
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(bx, by, 0.72 * s + Math.sin(snap.tick / 7) * 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    const dishId = typeof st.dish === 'string' ? st.dish : st.dish?.dish_id;
+    if (st.state === 'ready' && dishId) {
+      const cell = dishCell[dishId] ?? 0;
+      sprite(dishesArt, cell % 4, Math.floor(cell / 4), 4, 2, bx, by - 0.1 * s, 0.95 * s);
+    }
+    const statusText = st.state === 'cooking'
+      ? `${st.id} · Nấu ${Math.ceil((st.cook_ticks_left || 0) / 60)}s`
+      : st.state === 'ready' ? `${st.id} · E lấy món!` : `${st.id} · E nấu`;
+    pill(statusText, bx, by + 0.92 * s, {
+      size: 11,
+      color: st.state === 'ready' ? '#a7f3d0' : st.state === 'cooking' ? '#fde68a' : '#fff5da',
+      border: col,
+    });
+    if (dishId) pill(dishName(dishId), bx, by - 0.95 * s, { size: 10, color: '#ffe7b3' });
   });
-  // bàn + khách
+  // đồng bộ trạng thái khách đi vào từ cầu gỗ & khách rời quán (chỉ hiệu ứng hiển thị)
+  if (snap.tick < lastQuanTick) resetQuanActors();
+  lastQuanTick = snap.tick;
+  const tableMap = {};
+  (snap.tables || []).forEach((tb) => (tableMap[tb.id] = tb));
+  const curIds = new Set();
+  (snap.customers || []).forEach((c) => {
+    curIds.add(c.id);
+    const tb = tableMap[c.table_id];
+    const isPainted = hasBg && tb?.painted;
+    const seatX = tb ? (isPainted ? tb.pos[0] + 1.15 : tb.pos[0]) : 8;
+    const seatZ = tb ? (isPainted ? tb.pos[1] + 0.08 : tb.pos[1] + 0.92) : 5;
+    if (!customerWalkIn.has(c.id)) {
+      const startTick = (!quanSeenOnce && snap.tick > 150) ? snap.tick - 999 : snap.tick;
+      customerWalkIn.set(c.id, {
+        startTick,
+        duration: 95,
+        path: walkPathToSeat(seatX, seatZ, isPainted),
+      });
+    }
+    prevQuanCustomers.set(c.id, {
+      id: c.id, label: c.label || c.id, sprite: c.sprite || 0,
+      seatX, seatZ, isPainted,
+    });
+  });
+  quanSeenOnce = true;
+  for (const [id, info] of Array.from(prevQuanCustomers.entries())) {
+    if (!curIds.has(id)) {
+      const paidEv = (snap.events || []).find(e => e.name === 'paid' && (e.data?.order_id === id || e.data?.customer_id === id));
+      const leftEv = (snap.events || []).find(e => e.name === 'customer_left' && (e.data?.order_id === id || e.data?.customer_id === id));
+      const revPath = walkPathToSeat(info.seatX, info.seatZ, info.isPainted).slice().reverse();
+      leavingCustomers.push({
+        ...info,
+        startTick: snap.tick,
+        duration: 85,
+        path: revPath,
+        note: paidEv ? `Cảm ơn! +${paidEv.data?.amount ?? ''}k ✦` : leftEv ? 'Chờ lâu quá…' : 'Hẹn gặp lại!',
+        happy: Boolean(paidEv),
+      });
+      prevQuanCustomers.delete(id);
+      customerWalkIn.delete(id);
+    }
+  }
+  for (let i = leavingCustomers.length - 1; i >= 0; i--) {
+    if (snap.tick - leavingCustomers[i].startTick > leavingCustomers[i].duration + 12) leavingCustomers.splice(i, 1);
+  }
+
+  // bàn + khách (T1–T3 nằm đúng 3 bàn gỗ trên ảnh nền, khách ngồi ghế bên phải; T4 vẽ thêm trên sàn gỗ)
   const patMax = (meta.patience_s || 60) * 60;
   const byTable = {};
   (snap.customers || []).forEach((c) => (byTable[c.table_id] = c));
+  const walkingInDraw = [];
   (snap.tables || []).forEach((tb) => {
-    const tx=sx(tb.pos[0]),ty=sy(tb.pos[1]);
-    sprite(propsArt,0,2,4,4,tx,ty,2.3*s);
-    text(tb.label||tb.id,tx,ty+1.1*s,{size:13,align:'center',color:'#36210e'});
+    const tx = sx(tb.pos[0]), ty = sy(tb.pos[1]);
+    const isPainted = hasBg && tb.painted;
+    if (!isPainted) {
+      sprite(propsArt, 0, 2, 4, 4, tx, ty, 2.2 * s);
+    }
     const c = byTable[tb.id];
     if (c) {
-      const cx = tx, cy = ty - 1.0 * s;
-      const drinking=c.state==='eating' && c.eat_ticks_left < (meta.eat_s||10)*30;
-      const bob=c.state==='eating'?Math.sin(snap.tick/8)*2:0;
-      if(c.state==='eating')sprite(diningArt,c.sprite||0,drinking?1:0,4,2,cx,cy+bob,1.8*s);
-      else sprite(propsArt,c.sprite||0,3,4,4,cx,cy,1.8*s);
-      text((c.label||c.id)+' · '+(c.state==='eating'?(drinking?'Uống '+c.drink:'Đang ăn'):c.state==='assigned'?'Chờ bếp':'Gọi món'),cx,cy-1.0*s,{size:11,align:'center',color:'#31200c'});
-      text(dishName(c.dish_id),cx,ty+1.4*s,{size:11,align:'center',color:'#49301b'});
-      if(c.state==='eating'){
-        const cell=drinking?7:(dishCell[c.dish_id]??0);
-        sprite(dishesArt,cell%4,Math.floor(cell/4),4,2,tx,ty,.95*s);
-      }else if(c.patience_ticks_left!==undefined)bar(cx-.8*s,ty+1.6*s,1.6*s,5,c.patience_ticks_left/patMax,'#c96653');
+      const anim = customerWalkIn.get(c.id);
+      const progress = anim ? Math.min(1, (snap.tick - anim.startTick) / anim.duration) : 1;
+      if (progress < 1) {
+        // Khách đang đi từ cầu gỗ vào bàn: hiện nhãn bàn đang giữ chỗ + vẽ nhân vật đi bộ ở lớp trên
+        pill(`${tb.label || tb.id} · Khách đang tới`, isPainted ? tx - 0.25 * s : tx, ty + 0.62 * s, { size: 9.5, color: '#fde68a' });
+        walkingInDraw.push({ c, anim, progress });
+        return;
+      }
+      // Đã ngồi vào ghế: dùng sprite NGỒI (16-seated-waiting.png khi chờ, 13-dining-cast.png khi ăn/uống)
+      const cx = isPainted ? tx + 1.15 * s : tx;
+      const cy = isPainted ? ty - 0.08 * s : ty - 0.92 * s;
+      const flip = isPainted;
+      const drinking = c.state === 'eating' && c.eat_ticks_left < (meta.eat_s || 10) * 30;
+      const served = (snap.events || []).some(e => e.name === 'served' && (e.data?.order_id === c.id || e.data?.customer_id === c.id) && snap.tick - e.tick < 90);
+      const eating = c.state === 'eating';
+      const waitingKitchen = c.order_status === 'assigned' || c.state === 'assigned';
+      const bob = eating ? Math.sin(snap.tick / 7) * 2.2 : served ? Math.sin(snap.tick / 3) * 3.5 : Math.sin(snap.tick / 20) * 1.0;
+      const bite = eating && !drinking && Math.floor(snap.tick / 18) % 2 === 0;
+      const seatSize = 1.48 * s;
+      if (eating) {
+        sprite(diningArt, c.sprite || 0, drinking ? 1 : 0, 4, 2, cx, cy + bob, seatSize, flip, bite ? -.03 : .015);
+      } else {
+        const waitRow = waitingKitchen ? 1 : 0;
+        if (!sprite(seatedArt, c.sprite || 0, waitRow, 4, 2, cx, cy + bob, seatSize, flip, served ? -.03 : 0)) {
+          sprite(diningArt, c.sprite || 0, 0, 4, 2, cx, cy + bob, seatSize, flip, 0);
+        }
+      }
+      if (served) { ctx.fillStyle = '#ffd45c'; ctx.font = `${Math.max(12, Math.min(20, s * .55))}px system-ui`; ctx.textAlign = 'center'; ctx.fillText('✦', cx, cy - s * .72 + bob); }
+      const cState = c.state === 'eating' ? (drinking ? 'Uống ' + (c.drink || 'trà') : 'Đang ăn')
+        : waitingKitchen ? 'Chờ bếp' : 'Gọi món';
+      const labelX = isPainted ? tx - 0.25 * s : tx;
+      pill(`${c.label || c.id} · ${cState}`, labelX, ty - 0.56 * s, { size: 10, color: '#fff4d4' });
+      if (eating) {
+        const cell = drinking ? 7 : (dishCell[c.dish_id] ?? 0);
+        sprite(dishesArt, cell % 4, Math.floor(cell / 4), 4, 2, tx - 0.1 * s, ty - 0.05 * s, 0.88 * s);
+      } else if (c.patience_ticks_left !== undefined) {
+        const frac = c.patience_ticks_left / patMax;
+        bar(labelX - 0.75 * s, ty + 0.34 * s, 1.5 * s, 5, frac, frac < 0.25 ? '#ef4444' : frac < 0.5 ? '#f59e0b' : '#4ade80');
+      }
+      pill(dishName(c.dish_id), labelX, ty + 0.62 * s, { size: 9.5, color: '#ffe5a3' });
+    } else {
+      pill(tb.label || tb.id, tx, ty + 0.62 * s, { size: 10, color: '#f1e3c6' });
     }
   });
-  // người chơi
+  // khách đang đi từ cầu gỗ vào quán (dùng sprite đi bộ đứng ở propsArt hàng 3 + bóng chân + nhịp bước)
+  walkingInDraw.forEach(({ c, anim, progress }) => {
+    const { pos, dx } = samplePath(anim.path, progress);
+    const wx = sx(pos[0]), wy = sy(pos[1]);
+    const stepBounce = Math.abs(Math.sin(snap.tick * 0.24)) * 5;
+    const sway = Math.sin(snap.tick * 0.24) * 0.06;
+    const fadeIn = Math.min(1, progress * 5);
+    ctx.save();
+    ctx.globalAlpha = fadeIn;
+    ctx.fillStyle = "rgba(25, 12, 4, 0.28)";
+    ctx.beginPath(); ctx.ellipse(wx, wy + 0.45 * s, 0.45 * s, 0.18 * s, 0, 0, Math.PI * 2); ctx.fill();
+    sprite(propsArt, c.sprite || 0, 3, 4, 4, wx, wy - 0.12 * s - stepBounce, 1.52 * s, dx < -0.05, sway);
+    pill(`${c.label || c.id} · Đang vào quán`, wx, wy - 1.05 * s - stepBounce, { size: 10, color: '#fef08a', border: '#eab308' });
+    ctx.restore();
+  });
+  // khách ăn xong / rời bàn đi ngược ra cầu gỗ
+  leavingCustomers.forEach((lc) => {
+    const p = Math.min(1, (snap.tick - lc.startTick) / lc.duration);
+    const { pos, dx } = samplePath(lc.path, p);
+    const wx = sx(pos[0]), wy = sy(pos[1]);
+    const stepBounce = Math.abs(Math.sin(snap.tick * 0.24)) * 5;
+    const sway = Math.sin(snap.tick * 0.24) * 0.06;
+    const alpha = p > 0.8 ? Math.max(0, (1 - p) * 5) : 1;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "rgba(25, 12, 4, 0.25)";
+    ctx.beginPath(); ctx.ellipse(wx, wy + 0.45 * s, 0.42 * s, 0.16 * s, 0, 0, Math.PI * 2); ctx.fill();
+    sprite(propsArt, lc.sprite || 0, 3, 4, 4, wx, wy - 0.12 * s - stepBounce, 1.48 * s, dx < -0.05, sway);
+    pill(lc.note, wx, wy - 1.05 * s - stepBounce, {
+      size: 10,
+      color: lc.happy ? '#bbf7d0' : '#fecaca',
+      border: lc.happy ? '#4ade80' : '#ef4444',
+    });
+    ctx.restore();
+  });
+  // người chơi (phục vụ di chuyển trên sàn gỗ quán)
   const p = snap.player;
   if (p) {
     const px = sx(p.pos[0]), py = sy(p.pos[1]);
-    if (meta.interact_radius) { ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.arc(px, py, meta.interact_radius * s, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
-    sprite(surfaceArt,0,0,4,3,px,py-.45*s,1.7*s);
+    const vel = p.vel || [0, 0];
+    const flipP = vel[0] < -0.05;
+    if (meta.interact_radius) {
+      ctx.strokeStyle = "rgba(255, 240, 185, 0.55)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.arc(px, py, meta.interact_radius * s, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    sprite(surfaceArt, 0, 0, 4, 3, px, py - .42 * s, 1.75 * s, flipP);
     if (snap.hand) {
       const hand = typeof snap.hand === "string" ? snap.hand : (snap.hand.dish_id || "món");
-      const cell=dishCell[hand]??0;
-      sprite(dishesArt,cell%4,Math.floor(cell/4),4,2,px+.55*s,py-.5*s,.8*s);
-      text('Đang bưng: '+dishName(hand), px, py - 1.5 * s, { size: 11, align: "center", color: "#2a1a0a" });
+      const cell = dishCell[hand] ?? 0;
+      sprite(dishesArt, cell % 4, Math.floor(cell / 4), 4, 2, px + (flipP ? -.55 : .55) * s, py - .48 * s, .85 * s);
+      pill('Đang bưng: ' + dishName(hand), px, py - 1.45 * s, { size: 11, color: '#fef08a', border: '#f59e0b' });
     }
   }
   // HUD
