@@ -1,0 +1,116 @@
+test_catch_underwater_and_cooldown (test_diving.DivingTest.test_catch_underwater_and_cooldown) ... ok
+test_faint_loses_hold (test_diving.DivingTest.test_faint_loses_hold) ... ok
+test_headless_has_no_live_collectibles (test_diving.DivingTest.test_headless_has_no_live_collectibles) ... ok
+test_live_pickup_capacity_and_range (test_diving.DivingTest.test_live_pickup_capacity_and_range) ... ok
+test_live_pickup_once_and_restart (test_diving.DivingTest.test_live_pickup_once_and_restart) ... ok
+test_oxygen_underwater_and_refill (test_diving.DivingTest.test_oxygen_underwater_and_refill) ... ok
+test_state_input_and_clean_stop (test_live.LiveServerTest.test_state_input_and_clean_stop) ... ok
+test_demo_does_not_replace_real_restaurant (test_live_world.LiveWorldTest.test_demo_does_not_replace_real_restaurant) ... ok
+test_expansion_is_live_only_and_does_not_mutate_contract (test_live_world.LiveWorldTest.test_expansion_is_live_only_and_does_not_mutate_contract) ... ok
+test_final_hit_ends_and_file_inventory_filters_extras (test_live_world.LiveWorldTest.test_final_hit_ends_and_file_inventory_filters_extras) ... ok
+test_finished_restaurant_opens_new_shift_with_stock (test_live_world.LiveWorldTest.test_finished_restaurant_opens_new_shift_with_stock) ... ok
+test_kha_banh_and_cong_an_interactions (test_live_world.LiveWorldTest.test_kha_banh_and_cong_an_interactions) ... ok
+test_live_gather_hud_has_flower_icons_stack_counts_and_oxygen_warning (test_live_world.LiveWorldTest.test_live_gather_hud_has_flower_icons_stack_counts_and_oxygen_warning) ... ok
+test_mode_switch_transfers_gather_stock (test_live_world.LiveWorldTest.test_mode_switch_transfers_gather_stock) ... ok
+test_no_food_has_no_unfulfillable_orders (test_live_world.LiveWorldTest.test_no_food_has_no_unfulfillable_orders) ... ok
+test_pursuer_hit_starts_a_visible_hug_scene (test_live_world.LiveWorldTest.test_pursuer_hit_starts_a_visible_hug_scene) ... ok
+test_rain_chase_contact_costs_one_hp_with_grace (test_live_world.LiveWorldTest.test_rain_chase_contact_costs_one_hp_with_grace) ... ok
+test_restaurant_cook_serve_eat_and_pay (test_live_world.LiveWorldTest.test_restaurant_cook_serve_eat_and_pay) ... ok
+test_weather_rotation_includes_every_kind_and_is_seeded (test_live_world.LiveWorldTest.test_weather_rotation_includes_every_kind_and_is_seeded) ... ok
+test_wind_reverses_movement_and_preserves_catch (test_live_world.LiveWorldTest.test_wind_reverses_movement_and_preserves_catch) ... ok
+test_bad_frames_raise (test_python_starter_units.Units.test_bad_frames_raise) ... ok
+test_catch_is_a_v10_button_and_attack_is_not (test_python_starter_units.Units.test_catch_is_a_v10_button_and_attack_is_not) ... ok
+test_id_allocator_continues_after_max (test_python_starter_units.Units.test_id_allocator_continues_after_max) ... ok
+test_id_sorting (test_python_starter_units.Units.test_id_sorting) ... ok
+test_input_edges_and_inherit (test_python_starter_units.Units.test_input_edges_and_inherit) ... ok
+test_live_inputs_keep_fast_tap_edge (test_python_starter_units.Units.test_live_inputs_keep_fast_tap_edge) ... ok
+test_session_steps_gather_and_dock (test_python_starter_units.Units.test_session_steps_gather_and_dock) ... ok
+test_n3_01_full_tables_skip_without_no_dish (test_quan_orders.QuanCustomerSpawnAndReservation.test_n3_01_full_tables_skip_without_no_dish)
+Không còn bàn trống thì bỏ lượt, không phát `no_dish` dù kho trống. ... ok
+test_n3_01_random_customers_false_disables_spawn (test_quan_orders.QuanCustomerSpawnAndReservation.test_n3_01_random_customers_false_disables_spawn) ... ok
+test_n3_01_schedule_uses_phase_tick_even_when_shortened_and_no_spawn_at_closing (test_quan_orders.QuanCustomerSpawnAndReservation.test_n3_01_schedule_uses_phase_tick_even_when_shortened_and_no_spawn_at_closing)
+`time_left_ticks` rút ngắn về đúng `first_customer_tick` -> đóng ca ở tick đó, KHÔNG sinh khách. ... ok
+test_n3_01_smallest_free_table_and_no_double_reservation (test_quan_orders.QuanCustomerSpawnAndReservation.test_n3_01_smallest_free_table_and_no_double_reservation)
+Nhiều bàn: chọn bàn trống id nhỏ nhất (T2 trước T10) và không giữ trùng cùng 1 nguyên liệu. ... ok
+test_n3_01_spawn_schedule_and_first_tick_patience (test_quan_orders.QuanCustomerSpawnAndReservation.test_n3_01_spawn_schedule_and_first_tick_patience)
+Khách đến đúng `first_customer_tick`, `order_tick == phase_tick`, kiên nhẫn bắt đầu giảm ở bước SAU. ... ok
+test_n3_02_helper_oldest_order_and_consume_for_cooking (test_quan_orders.QuanCustomerSpawnAndReservation.test_n3_02_helper_oldest_order_and_consume_for_cooking)
+Kiểm tra interface Người 3 -> Người 4: chọn đơn cũ nhất theo (order_tick, table_id) và tiêu nguyên liệu. ... ok
+test_n3_02_no_dish_when_stock_empty_and_deterministic_choice (test_quan_orders.QuanCustomerSpawnAndReservation.test_n3_02_no_dish_when_stock_empty_and_deterministic_choice)
+Kho rỗng phát `no_dish`; cùng seed chọn món và xuất JSONL giống nhau từng byte. ... ok
+test_n3_04_contradictory_fixtures_exit_2_before_output (test_quan_orders.QuanFixtureValidation.test_n3_04_contradictory_fixtures_exit_2_before_output)
+Mọi mâu thuẫn mức luật theo PRD-0 mục D đều trả mã 2 trước khi ghi JSONL. ... ok
+test_n3_04_valid_fixtures_for_all_order_statuses (test_quan_orders.QuanFixtureValidation.test_n3_04_valid_fixtures_for_all_order_statuses)
+Fixture hợp lệ cho cả 4 trạng thái đơn + auto-reserve hoạt động đúng ở tick 0. ... ok
+test_n3_03_assigned_customer_leaving_clears_stove_or_hand_without_refund (test_quan_orders.QuanPatienceAndDeparture.test_n3_03_assigned_customer_leaving_clears_stove_or_hand_without_refund)
+Khách assigned rời bàn -> bỏ món trên bếp/tay, KHÔNG hoàn nguyên liệu đã tiêu. ... ok
+test_n3_03_closing_overrides_patience_zero_without_reputation_penalty (test_quan_orders.QuanPatienceAndDeparture.test_n3_03_closing_overrides_patience_zero_without_reputation_penalty)
+Tick đóng ca trùng tick kiên nhẫn về 0: khách chờ rời với `closing` và KHÔNG bị trừ uy tín. ... ok
+test_n3_03_patience_leave_releases_reservation_and_reduces_reputation (test_quan_orders.QuanPatienceAndDeparture.test_n3_03_patience_leave_releases_reservation_and_reduces_reputation)
+Hết kiên nhẫn: rời bàn (`patience`), giảm uy tín theo tuning, nhả giữ chỗ để khách sau gọi được. ... ok
+test_day_mode_scenario_validation_restrictions (test_quan_v11.QuanV11DayPlanAndPerformance.test_day_mode_scenario_validation_restrictions)
+Trong `day`: cấm `quan.stock`, cấm `quan.reputation`, và từ chối khách gọi món ngoài kế hoạch ngày. ... ok
+test_day_plan_filters_menu_and_allows_exceeding_quota (test_quan_v11.QuanV11DayPlanAndPerformance.test_day_plan_filters_menu_and_allows_exceeding_quota)
+Trong chế độ `day`, khách chỉ gọi món thuộc `day_plan.dishes`, được gọi vượt số suất nếu còn nguyên liệu. ... ok
+test_full_shift_10800_ticks_performance (test_quan_v11.QuanV11DayPlanAndPerformance.test_full_shift_10800_ticks_performance)
+Một ca quán đầy đủ 10.800 tick chạy nhanh (<< ngân sách 20s cho cả ngày 22.200 tick). ... ok
+test_closing_with_four_tables_mixed_states (test_quan_v11.QuanV11KitchenServePayLoop.test_closing_with_four_tables_mixed_states)
+Đóng ca với đủ 4 bàn T1–T4: ăn xong trả finished_eating, đang ăn trả closing, chờ rời closing không trừ uy tín & dọn bếp. ... ok
+test_full_loop_cook_ready_pick_serve_tip_and_pay (test_quan_v11.QuanV11KitchenServePayLoop.test_full_loop_cook_ready_pick_serve_tip_and_pay)
+Trọn vòng nấu → chín (`ready_ticks` tăng ở bước sau) → nhấc → phục vụ (có boa) → ăn xong trả tiền. ... ok
+test_serve_at_exact_patience_zero_and_at_closing_tick (test_quan_v11.QuanV11KitchenServePayLoop.test_serve_at_exact_patience_zero_and_at_closing_tick)
+Phục vụ đúng tick kiên nhẫn về 0 hoặc đúng tick đóng ca vẫn hợp lệ và thu tiền ngay khi đóng ca. ... ok
+test_stove_priority_over_table_at_equal_distance_and_wrong_order_rejected (test_quan_v11.QuanV11KitchenServePayLoop.test_stove_priority_over_table_at_equal_distance_and_wrong_order_rejected)
+Cùng khoảng cách: bếp ưu tiên hơn bàn; đưa sai món cho bàn thì không phục vụ. ... ok
+test_tip_threshold_exact_boundary_and_no_tip_under_half (test_quan_v11.QuanV11KitchenServePayLoop.test_tip_threshold_exact_boundary_and_no_tip_under_half)
+Đúng 50% kiên nhẫn sau bước 1 (1800/3600) vẫn được boa; 1799/3600 thì boa 0 và không cộng uy tín. ... ok
+test_two_stoves_four_tables_tie_breaking_and_drop_turn (test_quan_v11.QuanV11KitchenServePayLoop.test_two_stoves_four_tables_tie_breaking_and_drop_turn)
+Kiểm tra 2 bếp B1/B2, ưu tiên (khoảng cách, bếp trước bàn, id) và bỏ lượt khi mục tiêu chọn không tương tác được. ... ok
+test_v11_contract_numbers_and_day_plan_totals (test_quan_v11.QuanV11ManifestAndMenu.test_v11_contract_numbers_and_day_plan_totals) ... ok
+test_v11_two_process_inventory_with_new_kinds_and_lau_mam (test_quan_v11.QuanV11ManifestAndMenu.test_v11_two_process_inventory_with_new_kinds_and_lau_mam)
+Liên thông 2 tiến trình với nguyên liệu mới v1.1 (`ca_keo`, `keo_neo`) và nấu `lau_mam`. ... ok
+test_con_01_ticks_zero_and_end_line (test_smoke_p1.Contract.test_con_01_ticks_zero_and_end_line) ... ok
+test_con_02_deterministic_bytes (test_smoke_p1.Contract.test_con_02_deterministic_bytes) ... ok
+test_con_03_bad_input_exit_2 (test_smoke_p1.Contract.test_con_03_bad_input_exit_2) ... ok
+test_con_03_old_and_future_modes_rejected (test_smoke_p1.Contract.test_con_03_old_and_future_modes_rejected) ... ok
+test_gather_snapshot_has_gather_fields (test_smoke_p1.Contract.test_gather_snapshot_has_gather_fields) ... ok
+test_scenario_out_of_domain_exit_2 (test_smoke_p1.Contract.test_scenario_out_of_domain_exit_2) ... ok
+test_inv_01_gather_writes_inventory_quan_reads_it (test_smoke_p1.Integration.test_inv_01_gather_writes_inventory_quan_reads_it)
+Ví dụ smoke test trong PRD-0 mục G: cập bến ở tick 0, quán đọc kho đúng nội dung. ... ok
+test_inv_01_not_written_when_tick_limit_first (test_smoke_p1.Integration.test_inv_01_not_written_when_tick_limit_first) ... ok
+test_inv_bad_schema_exit_2 (test_smoke_p1.Integration.test_inv_bad_schema_exit_2) ... ok
+test_inventory_and_scenario_stock_conflict (test_smoke_p1.Integration.test_inventory_and_scenario_stock_conflict) ... ok
+test_inventory_flags_mode_mismatch_exit_2 (test_smoke_p1.Integration.test_inventory_flags_mode_mismatch_exit_2) ... ok
+test_move_01_swim_speed_after_ramp (test_smoke_p1.Movement.test_move_01_swim_speed_after_ramp)
+Bỏ 6 tick tăng tốc rồi đo 60 tick: quãng ≈ swim_speed × 1 s (±0.1). Ngang, xuống, chéo (không nhanh hơn). ... ok
+test_move_02_heading_positive_is_down (test_smoke_p1.Movement.test_move_02_heading_positive_is_down) ... ok
+test_move_03_edge_clamp (test_smoke_p1.Movement.test_move_03_edge_clamp)
+Chặn từng mép của vùng nước, kể cả d không âm (không bay lên khỏi mặt nước) và đáy d = 30. ... ok
+test_move_mep_vel_ve_0 (test_smoke_p1.Movement.test_move_mep_vel_ve_0) ... ok
+test_move_ramp_doi_huong_trong_tran (test_smoke_p1.Movement.test_move_ramp_doi_huong_trong_tran)
+Đảo từ +speed sang -speed: vận tốc chạm mục tiêu sau tối đa ramp_max_ticks tick kể từ lúc đổi input. ... ok
+test_time_ends_gather_and_keeps_hold (test_smoke_p1.Movement.test_time_ends_gather_and_keeps_hold) ... ok
+test_khoi_sai_mode_exit_2 (test_smoke_p1.ScenarioModes.test_khoi_sai_mode_exit_2) ... ok
+test_quan_fixture_khong_hop_le_exit_2 (test_smoke_p1.ScenarioModes.test_quan_fixture_khong_hop_le_exit_2) ... ok
+test_quan_player_vel_hop_le (test_smoke_p1.ScenarioModes.test_quan_player_vel_hop_le) ... ok
+test_good (test_team_check.TeamCheck.test_good) ... ok
+test_template_is_rejected (test_team_check.TeamCheck.test_template_is_rejected) ... ok
+test_too_few_members (test_team_check.TeamCheck.test_too_few_members) ... ok
+test_wrong_size_duplicate_and_outsider (test_team_check.TeamCheck.test_wrong_size_duplicate_and_outsider) ... ok
+test_day_cli_flags_and_multi_day_shop_upgrade_activation (test_v11_core.DayModeShopAndPauseV11.test_day_cli_flags_and_multi_day_shop_upgrade_activation)
+Chạy `--mode day --days 2` hộp đen: mua nâng cấp oxygen/hp trong Shop Ngày 1 -> có hiệu lực ở Ngày 2. ... ok
+test_full_day_22200_ticks_deterministic_and_under_performance_budget (test_v11_core.DayModeShopAndPauseV11.test_full_day_22200_ticks_deterministic_and_under_performance_budget)
+Một ngày trọn vẹn không pause (22.200 tick) chạy nhanh << 20s và tất định từng byte. ... ok
+test_shop_buy_failed_reasons_and_pause_freezes_timers (test_v11_core.DayModeShopAndPauseV11.test_shop_buy_failed_reasons_and_pause_freezes_timers)
+Kiểm buy_failed (funds/max_level/unknown) và pause đóng băng sim_tick/phase_tick/timer. ... ok
+test_crocodile_patrol_chase_hit_lifo_loss_recoil_and_monster_faint (test_v11_core.GatherV11PayloadsFishAndMonsters.test_crocodile_patrol_chase_hit_lifo_loss_recoil_and_monster_faint)
+Cá Sấu M1 tuần tra, đuổi ở d>=10, chạm mất 1 HP + rớt floor(giỏ/2) LIFO + bất tử 90 + recoil 60 + ngất monster. ... ok
+test_fish_swim_reflection_turn_and_scheduled_spawn (test_v11_core.GatherV11PayloadsFishAndMonsters.test_fish_swim_reflection_turn_and_scheduled_spawn)
+Cá bơi 1.5 m/s, phản xạ mép, đổi hướng ở bước bơi 120 và sinh thêm ở phase_tick=360. ... ok
+test_gather_event_payloads_match_prd_section_e (test_v11_core.GatherV11PayloadsFishAndMonsters.test_gather_event_payloads_match_prd_section_e)
+Rà chuẩn payload gather/fish_caught/hold_full/oxygen_empty/faint LIFO theo PRD-0 §E. ... ok
+
+----------------------------------------------------------------------
+Ran 80 tests in 22.391s
+
+OK
