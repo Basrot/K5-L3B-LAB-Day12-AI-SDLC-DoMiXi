@@ -16,6 +16,7 @@ Ngày tạo: 2026-11-21. Công cụ: built-in image_gen. Khuôn mặt tham chi�
 - [17-kha-banh](17-kha-banh.png): Bảng sprite 4x2 nhân vật Khá Bảnh (tuần tra, múa quạt chả và đòi tiền bảo kê).
 - [18-cong-an](18-cong-an.png): Bảng sprite 4x2 nhân vật Chú Công An (tuần tra, chào hỏi, tuýt còi, rượt bắt và dẫn giải đối tượng bảo kê).
 - [19-jack](19-jack.png): Bảng sprite 4x2 nhân vật Ca Sĩ Jack J97 (bước vào quán, đứng hát Thiên Lý Ơi, tương tác với khán giả).
+- [34-game-poster-full-cast](34-game-poster-full-cast.png): Poster quảng bá 16:9 với Út Sen, cha, người áo vàng dưới mưa, Khá Bảnh, chú công an, ca sĩ Jack, khách VIP Trường và bốn kiểu khách thường. Ảnh dùng để giới thiệu game, không làm atlas gameplay.
 
 ## Sử dụng
 
