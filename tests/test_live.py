@@ -1,13 +1,15 @@
 """Test cửa sổ chơi trực tiếp (chonoi.live). Chỉ dành cho starter Python: nhóm đổi ngôn ngữ thì xóa file này."""
 
 import json
+import io
 import time
 import unittest
 import urllib.error
 import urllib.request
+from unittest.mock import patch
 
 from chonoi.contract import load_contract
-from chonoi.live import LiveGame, LiveServer
+from chonoi.live import LiveGame, LiveServer, main
 
 
 def _get(url):
@@ -27,6 +29,17 @@ def _post(url, obj):
 
 
 class LiveServerTest(unittest.TestCase):
+    def test_main_starts_with_windows_legacy_console_encoding(self):
+        output = io.BytesIO()
+        console = io.TextIOWrapper(output, encoding="cp1252")
+        with patch("chonoi.live.LiveServer") as server_type, \
+             patch("chonoi.live.time.sleep", side_effect=KeyboardInterrupt), \
+             patch("sys.stdout", console):
+            server_type.return_value.url = "http://127.0.0.1:8000/"
+            self.assertEqual(main(["--mode", "campaign", "--port", "0"]), 0)
+            server_type.return_value.start.assert_called_once()
+            server_type.return_value.stop.assert_called_once()
+
     def test_state_input_and_clean_stop(self):
         tuning = load_contract()["tuning"]
         server = LiveServer(LiveGame("gather", tuning, {}, 1), port=0)  # cổng ngẫu nhiên
