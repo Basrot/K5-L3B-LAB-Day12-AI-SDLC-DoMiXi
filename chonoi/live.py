@@ -148,6 +148,7 @@ class LiveGame:
                     'screen': self.screen, 'day': self.day, 'wallet': self.wallet,
                     'reputation': self.reputation, 'stars': self.stars, 'result': self.result,
                     'intro_seen': self.intro_seen, 'upgrades': self.upgrades,
+                    'can_resume': self.return_screen is not None,
                     'upgrade_catalog': self.progression['upgrades'],
                     'day_count': len(self.contract['tuning']['day_plan']),
                 }
@@ -236,6 +237,8 @@ class CampaignLiveGame(LiveGame):
         self.result = None
         self.paid_by_dish = {}
         self.day_stock = None
+        self.return_screen = None
+        self.intro_return = None
         self.save_path = Path(__file__).resolve().parent.parent / '.chonoi-save.json'
         self._load_progress()
 
@@ -310,10 +313,26 @@ class CampaignLiveGame(LiveGame):
         action = body.get('action')
         with self._lock:
             if action == 'start' and self.screen == 'title':
-                self.screen = 'intro' if not self.intro_seen else 'map'
+                if self.intro_seen:
+                    self.screen = 'map'
+                else:
+                    self.intro_return = 'map'
+                    self.screen = 'intro'
+            elif action == 'title' and self.screen != 'title':
+                if self.return_screen is None or self.screen == 'playing':
+                    self.return_screen = self.screen
+                self.screen = 'title'
+                self.inputs = LiveInputs()
+            elif action == 'resume' and self.screen == 'title' and self.return_screen is not None:
+                self.screen = self.return_screen
+                self.return_screen = None
+            elif action == 'replay_intro' and self.screen in ('title', 'map'):
+                self.intro_return = self.screen
+                self.screen = 'intro'
             elif action == 'intro_done' and self.screen == 'intro':
                 self.intro_seen = True
-                self.screen = 'map'
+                self.screen = self.intro_return or 'map'
+                self.intro_return = None
                 self._save_progress()
             elif action == 'select_day' and self.screen in ('map', 'shop', 'results'):
                 day = body.get('day')
@@ -322,6 +341,7 @@ class CampaignLiveGame(LiveGame):
                 if day > 1 and self.stars.get(str(day - 1), 0) < 1:
                     raise ValueError('Cần ít nhất 1 sao ở màn trước')
                 self.day = day
+                self.return_screen = None
                 self.result = None
                 self.paid_by_dish = {}
                 self._new_phase('gather')

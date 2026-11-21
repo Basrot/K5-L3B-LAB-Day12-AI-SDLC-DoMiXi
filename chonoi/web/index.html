@@ -23,11 +23,14 @@
   .campaign-small{font-size:13px;color:#fbe5be}
   #campaign-ui[data-screen="intro"]{align-items:flex-start;justify-content:flex-end}
   #campaign-ui[data-screen="intro"] .campaign-panel{width:auto;max-height:none;margin:14px;padding:8px 12px;background:rgba(22,30,34,.75)}
+  #campaign-home{position:fixed;left:14px;top:14px;z-index:4;background:#7b4931}
+  #campaign-home[hidden]{display:none}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <nav aria-label="Chọn cảnh"><button data-mode="gather">☀ Sông</button><button data-mode="quan">♨ Quán · đem giỏ vào</button><button data-mode="quan" data-demo="true">Quán mẫu</button><button id="sound-toggle" aria-pressed="false">🔇 Âm thanh</button></nav>
+<button id="campaign-home" type="button" hidden>⌂ Về sảnh</button>
 <div id="campaign-ui" aria-live="polite"></div>
 <audio id="lobby-music" src="/audio/lobby.mp3" loop preload="auto"></audio>
 <script>
@@ -41,6 +44,7 @@ const cv = document.getElementById("c");
 const ctx = cv.getContext("2d");
 let snap = null, offline = false, transitioning = false;
 const campaignUI = document.getElementById('campaign-ui');
+const campaignHome = document.getElementById('campaign-home');
 const lobbyMusic = document.getElementById('lobby-music');
 let introFrame = 0, shopItem = null, campaignViewKey = '', musicMuted = false, musicAttempted = false;
 const introImages = ['29-intro-father-teaches-text.png','30-intro-father-injured-text.png','31-intro-ut-sen-decides-text.png','32-intro-first-departure-text.png'];
@@ -60,6 +64,7 @@ document.addEventListener('pointerdown',()=>{
 function renderCampaignUI() {
   const c = snap?.campaign;
   document.querySelector('nav').style.display = c ? 'none' : '';
+  campaignHome.hidden = !c || c.screen !== 'playing';
   if (!c || c.screen === 'playing') { campaignUI.classList.remove('active'); syncLobbyMusic('playing'); return; }
   campaignUI.classList.add('active'); syncLobbyMusic(c.screen);
   campaignUI.dataset.screen=c.screen;
@@ -70,27 +75,27 @@ function renderCampaignUI() {
   let html='';
   if(c.screen==='title'){
     bg('24-title-screen.png');
-    html='<div class="campaign-panel"><h1>Quán Ăn Chợ Nổi</h1><p>Giữ quán sáng đèn cùng Út Sen</p><div class="campaign-actions"><button data-campaign="start">Bắt đầu chơi</button><button data-campaign="music">'+(musicMuted?'Bật nhạc':'Tắt nhạc')+'</button></div></div>';
+    html=`<div class="campaign-panel"><h1>Quán Ăn Chợ Nổi</h1><p>Giữ quán sáng đèn cùng Út Sen</p><div class="campaign-actions">${c.can_resume?'<button data-campaign="resume">Tiếp tục lượt chơi</button>':''}<button data-campaign="start">Chọn màn</button><button data-campaign="replay_intro">Xem lại intro</button><button data-campaign="music">${musicMuted?'Bật nhạc':'Tắt nhạc'}</button></div></div>`;
   } else if(c.screen==='intro'){
     bg(introImages[introFrame]);
-    html='<div class="campaign-panel"><div class="campaign-actions"><button data-campaign="next_intro">'+(introFrame<3?'Tiếp tục':'Bắt đầu hành trình')+'</button><button data-campaign="skip_intro">Bỏ qua</button></div></div>';
+    html='<div class="campaign-panel"><div class="campaign-actions"><button data-campaign="next_intro">'+(introFrame<3?'Tiếp tục':'Bắt đầu hành trình')+'</button><button data-campaign="skip_intro">Bỏ qua</button><button data-campaign="title">Về sảnh</button></div></div>';
   } else if(c.screen==='map'){
     bg('25-level-select.png');
     const cards=Array.from({length:c.day_count},(_,i)=>{const n=i+1,open=n===1||(c.stars[String(n-1)]||0)>0,star=c.stars[String(n)]||0;return `<button data-campaign="day" data-day="${n}" ${open?'':'disabled'}>Màn ${n} · ${open?'☆'.repeat(3-star)+'★'.repeat(star):'🔒'}</button>`}).join('');
-    html=`<div class="campaign-panel"><h2>Chọn màn</h2><p>Ví: ${c.wallet} xu · Uy tín: ${Number(c.reputation).toFixed(1)}</p><div class="campaign-grid">${cards}</div><div class="campaign-actions"><button data-campaign="shop">Cửa hàng</button><button data-campaign="music">${musicMuted?'Bật nhạc':'Tắt nhạc'}</button></div></div>`;
+    html=`<div class="campaign-panel"><h2>Chọn màn</h2><p>Ví: ${c.wallet} xu · Uy tín: ${Number(c.reputation).toFixed(1)}</p><div class="campaign-grid">${cards}</div><div class="campaign-actions"><button data-campaign="shop">Cửa hàng</button><button data-campaign="replay_intro">Xem lại intro</button><button data-campaign="title">Về sảnh</button><button data-campaign="music">${musicMuted?'Bật nhạc':'Tắt nhạc'}</button></div></div>`;
   } else if(c.screen==='results'){
     bg('27-level-results.png');
     const r=c.result||{};
-    html=`<div class="campaign-panel"><h2>Màn ${c.day} · ${'★'.repeat(r.stars||0)}${'☆'.repeat(3-(r.stars||0))}</h2><p>Phục vụ ${r.fulfilled_count||0} món đúng kế hoạch · Uy tín ${Number(r.reputation||0).toFixed(1)}</p><p>Khách trả ${r.earned_from_customers||0} xu · Sự kiện ${r.event_money_delta||0} xu · Thưởng ${r.bonus||0} xu</p><p>Xu thay đổi: <strong>${r.total_earned_this_day||0}</strong> · Ví hiện tại: ${c.wallet} xu</p><div class="campaign-actions"><button data-campaign="shop">Nâng cấp</button><button data-campaign="map">Chọn màn</button></div></div>`;
+    html=`<div class="campaign-panel"><h2>Màn ${c.day} · ${'★'.repeat(r.stars||0)}${'☆'.repeat(3-(r.stars||0))}</h2><p>Phục vụ ${r.fulfilled_count||0} món đúng kế hoạch · Uy tín ${Number(r.reputation||0).toFixed(1)}</p><p>Khách trả ${r.earned_from_customers||0} xu · Sự kiện ${r.event_money_delta||0} xu · Thưởng ${r.bonus||0} xu</p><p>Xu thay đổi: <strong>${r.total_earned_this_day||0}</strong> · Ví hiện tại: ${c.wallet} xu</p><div class="campaign-actions"><button data-campaign="shop">Nâng cấp</button><button data-campaign="map">Chọn màn</button><button data-campaign="title">Về sảnh</button></div></div>`;
   } else if(c.screen==='shop'){
     bg(shopItem?'22-upgrade-detail-template.png':'16-upgrade-shop.png');
     if(!shopItem){
       const cards=Object.entries(c.upgrade_catalog).map(([id,item])=>`<button data-campaign="item" data-item="${id}">${item.label} · Cấp ${c.upgrades[id]+1}/3</button>`).join('');
-      html=`<div class="campaign-panel"><h2>Cửa hàng · ${c.wallet} xu</h2><div class="campaign-grid">${cards}</div><div class="campaign-actions"><button data-campaign="map">Chọn màn</button></div></div>`;
+      html=`<div class="campaign-panel"><h2>Cửa hàng · ${c.wallet} xu</h2><div class="campaign-grid">${cards}</div><div class="campaign-actions"><button data-campaign="map">Chọn màn</button><button data-campaign="title">Về sảnh</button></div></div>`;
     } else {
       const item=c.upgrade_catalog[shopItem], level=c.upgrades[shopItem];
       const rows=item.levels.map((l,i)=>{const state=i<=level?'Đã có':i===level+1?(c.wallet>=l.price?'Mua '+l.price+' xu':'Thiếu '+(l.price-c.wallet)+' xu'):'Mở sau cấp '+i;return `<button data-campaign="buy" data-item="${shopItem}" ${i===level+1&&c.wallet>=l.price?'':'disabled'}>Cấp ${i+1} · ${Object.entries(l).filter(([k])=>!['level','price'].includes(k)).map(([,v])=>v).join(' · ')} · ${state}</button>`}).join('');
-      html=`<div class="campaign-panel"><h2>${item.label} · ${c.wallet} xu</h2><div class="campaign-grid">${rows}</div><div class="campaign-actions"><button data-campaign="back_shop">Quay lại</button><button data-campaign="map">Chọn màn</button></div></div>`;
+      html=`<div class="campaign-panel"><h2>${item.label} · ${c.wallet} xu</h2><div class="campaign-grid">${rows}</div><div class="campaign-actions"><button data-campaign="back_shop">Quay lại</button><button data-campaign="map">Chọn màn</button><button data-campaign="title">Về sảnh</button></div></div>`;
     }
   }
   campaignUI.innerHTML=html;
@@ -99,13 +104,19 @@ campaignUI.addEventListener('click',async e=>{
   const b=e.target.closest('[data-campaign]');if(!b)return;
   const action=b.dataset.campaign;
   if(action==='music'){musicMuted=!musicMuted; if(musicMuted)lobbyMusic.pause();else {musicAttempted=true;lobbyMusic.play().catch(()=>{});}campaignViewKey='';renderCampaignUI();}
+  else if(action==='replay_intro'){introFrame=0;await campaignAction('replay_intro');}
   else if(action==='next_intro'){if(introFrame<3){introFrame++;campaignViewKey='';renderCampaignUI();}else await campaignAction('intro_done');}
   else if(action==='skip_intro'){introFrame=0;await campaignAction('intro_done');}
   else if(action==='back_shop'){shopItem=null;campaignViewKey='';renderCampaignUI();}
   else if(action==='item'){shopItem=b.dataset.item;campaignViewKey='';renderCampaignUI();}
   else if(action==='day'){shopItem=null;await campaignAction('select_day',{day:Number(b.dataset.day)});}
   else if(action==='buy') await campaignAction('buy',{item:b.dataset.item});
-  else {if(action==='shop')shopItem=null;await campaignAction(action);}
+  else {if(action==='shop')shopItem=null;if(action==='title'){introFrame=0;shopItem=null;}await campaignAction(action);}
+});
+campaignHome.addEventListener('click',async()=>{
+  if(transitioning)return;
+  down.clear();queue.length=0;lastSent='';resetQuanActors();
+  await campaignAction('title');
 });
 // Hoạt ảnh khách đi vào từ cầu gỗ và rời quán (chỉ hiển thị client, không ảnh hưởng sim/headless)
 const customerWalkIn = new Map();

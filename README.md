@@ -29,6 +29,8 @@ Game cần chế độ **headless** theo Test Contract (`python3 -m chonoi.headl
 
 Chạy `python -m chonoi.live --mode campaign` (hoặc bỏ `--mode`), rồi mở địa chỉ in ra. Màn chào phát nhạc `assets/audio/lobby-music.mp3` do người dùng cung cấp; nếu trình duyệt chặn tự phát, chạm/bấm một lần để nhạc bắt đầu. Lần chơi đầu hiện bốn cảnh intro, sau đó chọn màn. Mỗi màn đi lặn buổi sáng, mang nguyên liệu sang quán buổi tối, nhận sao và xu rồi nâng cấp đồ trước màn kế tiếp. Tiến độ được lưu ở `.chonoi-save.json` tại máy chạy game.
 
+Trong ca lặn hoặc ca quán, bấm **⌂ Về sảnh** để tạm dừng lượt đang chơi. Ở sảnh, bấm **Tiếp tục lượt chơi** để quay lại đúng ca, hoặc **Xem lại intro** để xem bốn cảnh mở đầu. Bản đồ cũng có nút **Về sảnh** và **Xem lại intro**.
+
 Giá món lấy từ `game.contract.json`; thưởng sao và giá đồ lặn bản live lấy từ `chonoi/progression.json`. Công thức ở `docs/plan/level-economy.md`. Chế độ `--mode gather` và `--mode quan` vẫn chạy riêng như trước; headless không dùng tiến độ màn.
 
 ### Lặn có animation (bản live)
