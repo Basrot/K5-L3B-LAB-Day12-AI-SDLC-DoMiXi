@@ -65,9 +65,69 @@ function walkPathToSeat(seatX, seatZ, isPainted) {
   return [gate, deck, [seatX, seatZ]];
 }
 let audioContext = null, soundEnabled = false, lastSoundEvent = '';
+let chaseSource = null, chaseBuffer = null, chaseLoading = null, audioTouched = false;
+function loadChaseMusic() {
+  if (!chaseLoading) chaseLoading = fetch('/art/chieu-troi-mua.mp3')
+    .then(response => { if (!response.ok) throw new Error('Không tải được nhạc'); return response.arrayBuffer(); })
+    .then(data => audioContext.decodeAudioData(data))
+    .then(buffer => { chaseBuffer = buffer; })
+    .catch(() => { chaseLoading = null; soundButton.title = 'Không tải được bài nhạc; hãy khởi động lại server'; });
+  return chaseLoading;
+}
+let musicKey = '', musicTimer = null, musicVoices = [], musicStep = 0;
+const weatherTunes = {
+  sun: [60,64,67,72,67,64,62,67],
+  rain: [48,55,51,55,50,57,53,57],
+  snow: [84,79,81,76,79,74,76,72],
+  fog: [48,49,55,0,51,50,55,0],
+  wind: [72,60,74,62,76,64,71,59],
+  bubbles: [72,79,84,79,74,81,86,81],
+  fish_rain: [60,67,72,60,62,69,74,62],
+  rainbow: [60,62,64,67,69,72,76,79],
+  quan: [60,64,67,69,67,64,62,55]
+};
+function stopMusic() {
+  clearInterval(musicTimer); musicTimer = null;
+  musicVoices.forEach(voice => { try { voice.stop(); } catch (_) {} });
+  musicVoices = [];
+  if (chaseSource) { try { chaseSource.stop(); } catch (_) {} chaseSource.disconnect(); chaseSource = null; }
+}
+function syncMusic() {
+  const key = !soundEnabled || document.hidden || !snap || snap.finished || transitioning ? ''
+    : snap.mode === 'gather' && snap.pursuer?.active ? 'chase'
+    : snap.mode === 'gather' ? snap.weather : 'quan';
+  if (key === musicKey) return;
+  stopMusic(); musicKey = key; musicStep = 0;
+  if (!key || !audioContext) return;
+  if (key === 'chase' && chaseBuffer) {
+    chaseSource = audioContext.createBufferSource(); chaseSource.buffer = chaseBuffer; chaseSource.loop = true;
+    const gain = audioContext.createGain(); gain.gain.value = .65;
+    chaseSource.connect(gain); gain.connect(audioContext.destination);
+    chaseSource.onended = () => gain.disconnect(); chaseSource.start();
+    return;
+  }
+  if (key === 'chase') loadChaseMusic().then(() => { if (chaseBuffer && musicKey === 'chase') { musicKey = ''; syncMusic(); } });
+  const melody = weatherTunes[key] || weatherTunes.sun;
+  const beat = key === 'wind' || key === 'fish_rain' ? 180 : key === 'fog' ? 450 : 280;
+  function note() {
+    if (!soundEnabled || audioContext.state !== 'running') return;
+    const pitch = melody[musicStep++ % melody.length];
+    if (!pitch) return;
+    const now = audioContext.currentTime, osc = audioContext.createOscillator(), gain = audioContext.createGain();
+    osc.type = key === 'wind' || key === 'fish_rain' ? 'triangle' : 'sine';
+    osc.frequency.value = 440 * 2 ** ((pitch-69)/12);
+    gain.gain.setValueAtTime(0,now);gain.gain.linearRampToValueAtTime(.12,now+.025);
+    gain.gain.exponentialRampToValueAtTime(.0001,now+beat/1000*.9);
+    osc.connect(gain);gain.connect(audioContext.destination);
+    musicVoices.push(osc);osc.onended=()=>{musicVoices=musicVoices.filter(v=>v!==osc);osc.disconnect();gain.disconnect();};
+    osc.start(now);osc.stop(now+beat/1000);
+  }
+  note(); musicTimer = setInterval(note,beat);
+}
+document.addEventListener('visibilitychange',syncMusic);
 const soundButton = document.getElementById('sound-toggle');
-soundButton.addEventListener('click', async () => {
-  soundEnabled = !soundEnabled;
+async function setSound(enabled) {
+  audioTouched = true; soundEnabled = enabled;
   if (soundEnabled && !audioContext) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (AudioCtx) audioContext = new AudioCtx(); else soundEnabled = false;
@@ -76,7 +136,17 @@ soundButton.addEventListener('click', async () => {
   soundButton.textContent = soundEnabled ? '🔊 Âm thanh' : '🔇 Âm thanh';
   soundButton.setAttribute('aria-pressed', String(soundEnabled));
   if (soundEnabled) playCue('water');
-});
+  if (soundEnabled) loadChaseMusic();
+  syncMusic();
+}
+soundButton.textContent = '🔊 Bật nhạc';
+soundButton.addEventListener('click', () => setSound(!soundEnabled));
+function unlockSound(event) {
+  if (!audioTouched && event.target !== soundButton) setSound(true);
+  else if (soundEnabled && audioContext?.state === 'suspended') audioContext.resume().then(() => { musicKey = ''; syncMusic(); });
+}
+addEventListener('pointerdown',unlockSound);
+addEventListener('keydown',unlockSound);
 function playCue(kind) {
   if (!soundEnabled || !audioContext) return;
   const now = audioContext.currentTime;
@@ -215,6 +285,7 @@ async function poll() {
     const r = await fetch("/state", { cache: "no-store" });
     snap = await r.json();
     hearEvents(snap.events);
+    syncMusic();
     offline = false;
     document.querySelectorAll('[data-mode]').forEach(b => {
       b.disabled = transitioning || (snap.mode === 'gather' && snap.finished && snap.reason === 'fainted');

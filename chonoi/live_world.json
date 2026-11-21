@@ -26,11 +26,11 @@
     }
   },
   "weather": {
-    "sun_ticks": 240,
+    "sun_ticks": 600,
     "rain_ticks": 1800,
     "duration_ticks": [
-      300,
-      420
+      600,
+      600
     ],
     "weights": {
       "sun": 3,
