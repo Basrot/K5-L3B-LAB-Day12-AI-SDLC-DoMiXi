@@ -10,7 +10,7 @@
 | **Bench / QA** | Đào Ngọc Hân (`daongochan`) | Viết `chonoi/bench.py` (1280×720, làm nóng 3s, đo 30s, 5 trường JSON), `chonoi/soak.py` (10 ngày tất định, lặp D1–D5 ở D6–D10), nâng cấp `DaySim` & `game.contract.json` v1.3, viết `tests/test_v13_bench_soak.py`, chạy đo thật lưu `docs/proof/phase-4/`, lập `docs/verification/phase-4.md`. |
 | **Giao diện & Cảnh báo** | BFNGOC (`BFNGOC2`) + Đào Ngọc Hân (`daongochan`) | Bổ sung 3 cảnh báo có biểu tượng & chữ rõ ràng (Thủy quái gần, Oxy sắp hết, Khách sắp giận) và chế độ **Tương phản cao** (nút góc dưới phải + phím `H`) trên `chonoi/web/index.html`; kiểm thử cả 3 cảnh báo ở chế độ tương phản cao. |
 | **Đóng gói & Release / Integrator** | Nam Nguyễn (`Basrot`) + Đào Ngọc Hân (`daongochan`) | Rà `README.md` (≤ 3 lệnh từ clone sạch trên macOS/Linux), `LICENSE`, `CREDITS.md`, `CHANGELOG.md` theo từng phase, viết Release notes `docs/release/v1.0.0.md`, kiểm thử clone sạch, đóng gói `quan-an-cho-noi-v1.0.0.zip`, gắn tag `phase-4` & `v1.0.0`, công bố GitHub Release `v1.0.0`. |
-| **Điều phối Retro & Phản tư** | Tran Trong Duc Tai (`DucTai2804`) + Cả 4 thành viên | Rà hành động đã chốt ở Retro P2 trong `docs/retro.md`, cập nhật `docs/clarify.md` & `docs/ai-usage-log.md`, từng thành viên hoàn thiện phản tư cá nhân ≤ 200 từ tại `docs/members/<handle>.md`. |
+| **Điều phối Retro & Phản tư** | Trần Trọng Đức Tài (`DucTai2804`) + Cả 4 thành viên | Rà hành động đã chốt ở Retro P2 trong `docs/retro.md`, cập nhật `docs/clarify.md` & `docs/ai-usage-log.md`, từng thành viên hoàn thiện phản tư cá nhân ≤ 200 từ tại `docs/members/<handle>.md`. |
 
 ## Tiêu chí nghiệm thu (AC-P4)
 

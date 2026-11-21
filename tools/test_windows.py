@@ -2,9 +2,14 @@
 
 Only replaces the python3 launcher in memory, never modifies game.contract.json.
 """
+import os
 import sys
 import unittest
 from pathlib import Path
+
+# Đảm bảo urllib không đi qua proxy môi trường khi test localhost
+os.environ["NO_PROXY"] = "127.0.0.1,localhost"
+os.environ["no_proxy"] = "127.0.0.1,localhost"
 
 root = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(root / 'tests'), str(root)]

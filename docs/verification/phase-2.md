@@ -28,5 +28,5 @@
 - **Đã đạt:** Toàn bộ **lõi headless Test Contract v1.1** (`gather`, `quan`, `day`, `Shop`, `pause`, 6 nguyên liệu, 6 món, 2 bếp/4 bàn, cá bơi/sinh, Cá Sấu `M1`/`M2`) đạt **80/80 tests xanh**, tất định từng byte, hiệu năng `1.057 s / ngày`, kèm 2 skill kiểm chứng thực thi được và đầy đủ bằng chứng thật trong `docs/proof/phase-2/`.
 - **Chưa đạt / việc cần chốt ngay với nhóm:**
   1. Điền đủ 4 tên + GitHub handle thật vào `TEAM.md` và sửa `"team"` trong `game.contract.json` để `python tools/check_team.py` xanh.
-  2. `BFNGOC` và `Tran Trong Duc Tai` thêm ≥ 1 commit có nội dung (đủ ≥ 3 commit/người).
+  2. `BFNGOC` và `Trần Trọng Đức Tài` thêm ≥ 1 commit có nội dung (đủ ≥ 3 commit/người).
   3. Bổ sung màn hình Menu / DayIntro / Shop / Pause trên giao diện trình duyệt (`chonoi/web/index.html`) nếu kịp trước khi bàn giao.

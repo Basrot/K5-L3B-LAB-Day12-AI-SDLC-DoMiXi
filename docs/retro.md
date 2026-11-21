@@ -26,7 +26,7 @@
   - *Tốt:* 4/4 thành viên đều đạt ≥ 3 commit có nội dung; ranh giới headless vs live cực kỳ rõ ràng (`_live_mode` shim + `deepcopy` config riêng), **111/111 tests pass**, `soak` 10 ngày chạy trong ~11s (`crashes: 0`, lặp lại 100% giữa 2 lượt), `bench` 1280×720 đạt **`72.68 avg FPS`** và **`500.31 ms` load** sau khi tối ưu bỏ polygon stipple GDI trên Tk; đủ 3 cảnh báo chữ/biểu tượng + chế độ Tương phản cao (`H`).
   - *Tệ:* Thiếu kỷ luật gắn tag ngay cuối Phase 1–2; từng có commit đẩy nhầm 2 file log tạm (`live-server*.log`, đã dọn và thêm vào `.gitignore`); `p1_low_fps` của renderer `tkinter.Canvas` đạt `20.0 FPS` (dưới mốc báo cáo 30 FPS do GDI spike trên Windows); cần đôn đốc 3 thành viên còn lại tự đẩy file phản tư cá nhân `docs/members/<handle>.md` trước giờ demo.
 - **Số liệu thật (tính đến mốc phát hành `v1.0.0` / `phase-4` trên `main`):**
-  - Commit nội dung (không tính merge) theo người: `daongochan` (Đào Ngọc Hân): **11+**, `Basrot` (Nam Nguyễn): **9**, `BFNGOC2` (BFNGOC): **6**, `DucTai2804` (Tran Trong Duc Tai): **3** (tổng ≥ 29 commit nhóm trên nền 9 commit starter).
+  - Commit nội dung (không tính merge) theo người: `daongochan` (Đào Ngọc Hân): **11+**, `Basrot` (Nam Nguyễn): **9**, `BFNGOC2` (BFNGOC): **6**, `DucTai2804` (Trần Trọng Đức Tài): **3** (tổng ≥ 29 commit nhóm trên nền 9 commit starter).
   - Cách đọc code của nhau: rà diff trực tiếp khi tích hợp vào `main` và chạy trọn bộ `python tools/test_windows.py` + 2 skill `.agents/skills/` sau mỗi lần gộp.
   - Token ước tính ghi theo từng phase & thành viên tại [`docs/ai-usage-log.md`](ai-usage-log.md) (~405k token tổng hợp từ các lượt đã ghi log).
 - **Một lần AI sai và cách nhóm phát hiện:**
