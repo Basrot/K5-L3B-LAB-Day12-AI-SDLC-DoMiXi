@@ -14,6 +14,9 @@ class LiveQuanSim(QuanSim):
         super().__init__(tuning, scenario, streams, ids, inventory)
         self.elapsed = 0
         self.seat_counter = 0
+        self.order_plan = None
+        self.orders_spawned = {}
+        self.extra_customer_limit = 0
 
     def _order(self, events):
         occupied = {c['table_id'] for c in self.customers}
@@ -26,10 +29,20 @@ class LiveQuanSim(QuanSim):
                 available[k] = available.get(k, 0) - amount
         dishes = [k for k, dish in sorted(self.menu.items())
                   if all(available.get(i, 0) >= n for i, n in dish['recipe'].items())]
+        planned = [k for k in dishes if self.order_plan is not None
+                   and self.orders_spawned.get(k, 0) < self.order_plan.get(k, 0)]
+        if self.order_plan is not None:
+            if planned:
+                dishes = planned
+            elif sum(self.orders_spawned.values()) < sum(self.order_plan.values()) + self.extra_customer_limit:
+                pass  # khách gọi thêm món còn làm được từ kho hiện có
+            else:
+                dishes = []
         if not dishes:
             events.append(('no_dish', {}))
             return
         dish = self.rng.get('live_orders').choice(dishes)
+        self.orders_spawned[dish] = self.orders_spawned.get(dish, 0) + 1
         person = self.world['diners'][self.seat_counter % len(self.world['diners'])]
         self.seat_counter += 1
         c = dict(person, id=self.ids.new('C'), table_id=tables[0]['id'], state='waiting',
@@ -59,7 +72,7 @@ class LiveQuanSim(QuanSim):
                     self.shift_earned += amount
                     self.reputation = min(self.t['reputation_max'], self.reputation + (self.t['tip_reputation'] if c.get('tip', 0) else 0))
                     self.customers.remove(c)
-                    events.append(('paid', {'customer_id': c['id'], 'amount': amount}))
+                    events.append(('paid', {'customer_id': c['id'], 'dish_id': c['dish_id'], 'amount': amount}))
             else:
                 c['patience_ticks_left'] = max(0, c['patience_ticks_left'] - 1)
                 if c['patience_ticks_left'] == 0:

@@ -12,6 +12,8 @@ def live_tuning(tuning):
     world = load_world()
     result = deepcopy(tuning)
     result['gather'].update(world['gather'])
+    # Giữ các loài cá của day_plan trong contract khi thêm cá sáng tạo ở Live.
+    result['gather']['fish_yield'] = {**tuning['gather']['fish_yield'], **world['gather'].get('fish_yield', {})}
     if isinstance(result['gather'].get('fish_initial'), list):
         result['gather']['fish_initial'] += world['fish']
     else:
