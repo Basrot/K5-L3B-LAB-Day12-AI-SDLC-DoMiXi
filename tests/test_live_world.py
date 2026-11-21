@@ -10,6 +10,40 @@ def inp(*edges):
     return InputState((0, 0), {}, set(edges))
 
 class LiveWorldTest(unittest.TestCase):
+    def test_reservations_hold_arrive_serve_and_fail_once(self):
+        q = LiveGame('quan', load_contract()['tuning'], {}, 3).session.sim
+        dish = 'ca_loc_nuong_trui'
+        q.reservations = [{'id':'R1','table_id':'T1','dish_id':dish,'arrival_tick':1,'state':'scheduled'}]
+        q.elapsed = 1
+        events = []
+        q._step_reservations(events)
+        self.assertEqual([name for name, _ in events], ['reservation_arrived','customer_arrived'])
+        c = q.customers[0]
+        q._interact(q.stoves[0],0,events)
+        self.assertEqual(c['base_price'], int(q.menu[dish]['price']*1.5))
+        q.stoves[0]['state'] = 'ready'
+        q._interact(q.stoves[0],0,events)
+        table = next(t for t in q.tables if t['id']=='T1')
+        q._interact(table,1,events)
+        self.assertEqual(q.reservations[0]['state'],'served')
+        self.assertEqual(events[-1][0],'reservation_served')
+        r = {'id':'R2','table_id':'T2','dish_id':dish,'arrival_tick':1,'state':'scheduled'}
+        q.reservations.append(r)
+        q.fresh_items=[]
+        before=q.reputation
+        q._step_reservations(events)
+        q._step_reservations(events)
+        self.assertEqual(r['reason'],'stock')
+        self.assertEqual(q.reputation,max(q.t['reputation_min'],before-1))
+        self.assertEqual(sum(name=='reservation_failed' for name,_ in events),1)
+
+    def test_live_menu_uses_all_harvested_ingredients(self):
+        game=LiveGame('gather',load_contract()['tuning'],{},3)
+        tuning=game.tuning
+        ingredients=set(tuning['gather']['fish_yield'])|{n['kind'] for n in tuning['gather']['nodes']}
+        used={kind for dish in tuning['menu'].values() for kind in dish['recipe']}
+        self.assertFalse(ingredients-used)
+
     def setUp(self):
         self.t = load_contract()['tuning']
 

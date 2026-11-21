@@ -149,6 +149,7 @@ class LiveGame:
                     'reputation': self.reputation, 'stars': self.stars, 'result': self.result,
                     'intro_seen': self.intro_seen, 'upgrades': self.upgrades,
                     'upgrade_catalog': self.progression['upgrades'],
+                    'equipped': self.equipped,
                     'day_count': len(self.contract['tuning']['day_plan']),
                 }
             return json.dumps(snap, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -188,7 +189,9 @@ class LiveGame:
                 return
             stock = None
             delivery = None
+            reservation_delivery = None
             if self.mode == 'gather' and mode == 'quan' and not demo:
+                reservation_delivery = [dict(r) for r in self.session.sim.reservations]
                 delivery = [dict(item) for item in self.session.sim.fresh_items]
                 self.session.sim.fresh_items.clear()
                 stock = hold_to_items(self.session.sim.hold)
@@ -217,6 +220,10 @@ class LiveGame:
                 self._sessions[key] = self.session
             self._args = (mode, self.tuning, {}, self._args[3], stock)
             if delivery is not None:
+                self.session.sim.reservations = reservation_delivery
+                for reservation in reservation_delivery:
+                    if reservation['arrival_tick'] <= round(self.session.sim.world['reservations']['table_hold_s']*60):
+                        reservation['state'] = 'holding'
                 # Replace only the newly delivered quantities; preserve existing stock freshness.
                 existing = previous_fresh if previous_fresh is not None else list(self.session.sim.fresh_items)
                 for kind, count in ((stock or {}) if previous_fresh is None else {}).items():
@@ -253,6 +260,7 @@ class CampaignLiveGame(LiveGame):
         self.day_stock = None
         self.save_path = Path(__file__).resolve().parent.parent / '.chonoi-save.json'
         self._load_progress()
+        self.equipped = dict(self.upgrades)
 
     def _load_progress(self):
         try:
@@ -281,18 +289,21 @@ class CampaignLiveGame(LiveGame):
     def _new_phase(self, mode, stock=None):
         tuned = live_tuning(self.contract['tuning'])
         if mode == 'gather':
-            for name, level in self.upgrades.items():
+            for name, level in self.equipped.items():
+                if level < 0:
+                    level = 0
                 stats = self.progression['upgrades'][name]['levels'][level]
                 if name == 'oxygen': tuned['gather']['oxygen_max_s'] = stats['oxygen_max_s']
                 elif name == 'hp': tuned['gather']['hp_max'] = stats['hp_max']
                 elif name == 'fins': tuned['gather']['swim_speed'] *= stats['swim_speed_multiplier']
                 elif name == 'helmet': tuned['gather']['max_depth'] = stats['max_depth']
                 elif name == 'lamp': tuned['gather']['reveal_radius'] = stats['reveal_radius']
+            if self.equipped.get('lamp',0) < 0:
+                tuned['gather']['reveal_radius'] = 0
             scenario = {}
         else:
             plan = next(p for p in self.contract['tuning']['day_plan'] if p['day'] == self.day)
             scenario = {'reputation': self.reputation}
-            tuned['menu'] = {k: v for k, v in tuned['menu'].items() if k in plan['dishes']}
             tuned['quan']['customer_interval_s'] = self.progression['days'][str(self.day)]['customer_interval_s']
         self.mode = mode
         self.tuning = tuned
@@ -300,6 +311,9 @@ class CampaignLiveGame(LiveGame):
         old = self.session.sim
         if mode == 'gather':
             self.session.sim = LiveGatherSim(tuned, scenario, old.rng, old.ids)
+            from .sim.reservations import make_reservations
+            plan = next(p for p in self.contract['tuning']['day_plan'] if p['day'] == self.day)
+            self.session.sim.reservations = make_reservations(self.session.sim, plan['dishes'])
         else:
             self.session.sim = LiveQuanSim(tuned, scenario, old.rng, old.ids, stock)
             self.session.sim.money = self.wallet
@@ -325,10 +339,10 @@ class CampaignLiveGame(LiveGame):
         action = body.get('action')
         with self._lock:
             if action == 'start' and self.screen == 'title':
-                self.screen = 'intro' if not self.intro_seen else 'map'
+                self.screen = 'intro'
             elif action == 'intro_done' and self.screen == 'intro':
                 self.intro_seen = True
-                self.screen = 'map'
+                self.screen = 'equipment'
                 self._save_progress()
             elif action == 'select_day' and self.screen in ('map', 'shop', 'results'):
                 day = body.get('day')
@@ -339,13 +353,40 @@ class CampaignLiveGame(LiveGame):
                 self.day = day
                 self.result = None
                 self.paid_by_dish = {}
+                self.screen = 'equipment'
+            elif action == 'equip' and self.screen == 'equipment':
+                item, level = body.get('item'), body.get('level')
+                if item not in self.upgrades or type(level) is not int or not -1 <= level <= self.upgrades[item]:
+                    raise ValueError('Trang bị chưa sở hữu')
+                self.equipped[item] = level
+            elif action == 'begin_morning' and self.screen == 'equipment':
                 self._new_phase('gather')
+            elif action == 'prepare' and self.screen in ('shop', 'results'):
+                next_day = min(self.day + 1, len(self.contract['tuning']['day_plan']))
+                if self.stars.get(str(self.day), 0) >= 1 and getattr(self,'shop_return',None) != 'equipment':
+                    self.day = next_day
+                self.shop_return = None
+                self.result = None
+                self.paid_by_dish = {}
+                self.screen = 'equipment'
+            elif action == 'close_evening' and self.screen == 'playing' and self.mode == 'quan':
+                self.session.sim.time_left_ticks = 1
             elif action == 'evening' and self.screen == 'playing' and self.mode == 'gather':
+                reservations = [dict(r) for r in self.session.sim.reservations]
+                delivery = [dict(item) for item in self.session.sim.fresh_items]
                 stock = hold_to_items(self.session.sim.hold)
                 self.session.sim.hold.clear()
                 self.day_stock = dict(stock)
                 self._new_phase('quan', stock)
-            elif action == 'shop' and self.screen in ('results', 'map'):
+                self.session.sim.reservations = reservations
+                self.session.sim.fresh_items = delivery
+                for item in delivery:
+                    self.session.sim.ids.reserve(item['id'])
+                for reservation in reservations:
+                    if reservation['arrival_tick'] <= round(self.session.sim.world['reservations']['table_hold_s']*60):
+                        reservation['state'] = 'holding'
+            elif action == 'shop' and self.screen in ('results', 'map', 'equipment'):
+                self.shop_return = self.screen
                 self.screen = 'shop'
             elif action == 'map' and self.screen in ('shop', 'results'):
                 self.screen = 'map'
@@ -486,6 +527,7 @@ class LiveServer:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="chonoi.live", description="Chơi trực tiếp trên trình duyệt (starter).")
     p.add_argument("--mode", default="campaign", choices=["gather", "quan", "campaign"])
+    p.add_argument('--standalone', action='store_true', help='Chơi riêng gather/quan, bỏ qua intro')
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--port", type=int, default=8000, help="0 = cổng ngẫu nhiên")
     p.add_argument("--host", default="127.0.0.1")
@@ -503,7 +545,8 @@ def main(argv=None) -> int:
         inventory = read_inventory(a.inventory) if a.inventory else None
         if inventory is not None and "stock" in scenario:
             raise BadInput("vừa có quan.stock vừa có --inventory")
-        game = (CampaignLiveGame(tuning, a.seed) if a.mode == 'campaign'
+        journey = a.mode == 'campaign' or (a.mode == 'gather' and not a.standalone and not a.scenario and not a.inventory_out)
+        game = (CampaignLiveGame(tuning, a.seed) if journey
                 else LiveGame(a.mode, tuning, scenario, a.seed, inventory, a.inventory_out))
         server = LiveServer(game, a.host, a.port)
     except BadInput as e:

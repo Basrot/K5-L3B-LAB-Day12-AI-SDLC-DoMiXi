@@ -4,9 +4,10 @@ from .quan import QuanSim
 from ..ids import sort_by_id, id_key
 from ..live_world import load_world
 from .freshness import new_item, decay, snapshot_items
+from .reservations import Reservations, make_reservations
 
 
-class LiveQuanSim(QuanSim):
+class LiveQuanSim(Reservations, QuanSim):
     def __init__(self, tuning, scenario, streams, ids, inventory=None):
         self.world = load_world()
         self.demo_stock = inventory is None and 'stock' not in scenario
@@ -55,6 +56,10 @@ class LiveQuanSim(QuanSim):
             'action_ticks': 0
         }
         self.invuln_ticks = 0
+        self.reservations = make_reservations(self, self.menu)
+        for reservation in self.reservations:
+            if reservation['arrival_tick'] <= round(self.world['reservations']['table_hold_s']*60):
+                reservation['state'] = 'holding'
 
     def _reserve_fresh(self):
         threshold = self.world['freshness']['spoiled_below']
@@ -84,7 +89,8 @@ class LiveQuanSim(QuanSim):
 
     def _order(self, events):
         occupied = {c['table_id'] for c in self.customers}
-        tables = [t for t in sort_by_id(self.tables) if t['id'] not in occupied]
+        held = {r['table_id'] for r in self.reservations if r['state'] in ('holding', 'waiting')}
+        tables = [t for t in sort_by_id(self.tables) if t['id'] not in occupied and t['id'] not in held]
         if not tables:
             return
         available = {}
@@ -127,6 +133,7 @@ class LiveQuanSim(QuanSim):
         self.time_left_ticks = max(0, self.time_left_ticks - 1)
         decay(self, self.fresh_items, self.world['freshness']['quan_decay'], events)
         self._reserve_fresh()
+        self._step_reservations(events)
         self.invuln_ticks = max(0, self.invuln_ticks - 1)
 
         # Xử lý hành vi Khá Bảnh & Chú Công An
@@ -138,7 +145,18 @@ class LiveQuanSim(QuanSim):
                 st['cook_ticks_left'] = max(0, st['cook_ticks_left'] - 1)
                 if st['cook_ticks_left'] == 0:
                     st['state'] = 'ready'
+                    st['ready_ticks'] = 0
                     events.append(('dish_ready', {'stove_id': st['id']}))
+            elif st['state'] == 'ready' and self.t.get('burn_s') is not None:
+                st['ready_ticks'] = st.get('ready_ticks', 0) + 1
+                if st['ready_ticks'] >= round(self.t['burn_s']*60):
+                    customer = next((c for c in self.customers if c['id'] == st.get('customer_id')), None)
+                    events.append(('dish_burnt', {'stove_id':st['id'], 'order_status':'failed'}))
+                    if customer and customer.get('reservation_id'):
+                        reservation = next(r for r in self.reservations if r['id'] == customer['reservation_id'])
+                        self._fail_reservation(reservation, 'burnt', events)
+                    else:
+                        st.update(state='idle', dish=None, customer_id=None)
         for c in sort_by_id(list(self.customers)):
             if c['state'] == 'eating':
                 c['eat_ticks_left'] -= 1
@@ -154,6 +172,10 @@ class LiveQuanSim(QuanSim):
             else:
                 c['patience_ticks_left'] = max(0, c['patience_ticks_left'] - 1)
                 if c['patience_ticks_left'] == 0:
+                    if c.get('reservation_id'):
+                        reservation = next(r for r in self.reservations if r['id'] == c['reservation_id'])
+                        self._fail_reservation(reservation, 'patience', events)
+                        continue
                     self.customers.remove(c)
                     self.reputation = max(self.t['reputation_min'], self.reputation + self.t['left_reputation_delta'])
                     for st in self.stoves:
@@ -181,9 +203,19 @@ class LiveQuanSim(QuanSim):
         if self.elapsed >= self.t['first_customer_tick'] and (self.elapsed - self.t['first_customer_tick']) % interval == 0:
             self._order(events)
         if self.time_left_ticks == 0:
+            for reservation in self.reservations:
+                self._fail_reservation(reservation, 'closing', events)
             self.done = True
             self.reason = 'time'
             events.append(('quan_end', {'money': self.money, 'earned': self.earned, 'reputation': self.reputation}))
+        elif not self.customers and self.elapsed > self.t['first_customer_tick']:
+            usable = {}
+            for item in self.fresh_items:
+                if item['fresh_units'] >= self.world['freshness']['spoiled_below']:
+                    usable[item['kind']] = usable.get(item['kind'],0)+1
+            if not any(all(usable.get(kind,0)>=count for kind,count in dish['recipe'].items()) for dish in self.menu.values()):
+                # Close through the regular final-tick path, including reservation cleanup.
+                self.time_left_ticks = 1
         return events
 
     def _interact_police(self, events) -> bool:
@@ -400,6 +432,8 @@ class LiveQuanSim(QuanSim):
                     c = waiting[0]
                     selected = [i for i in self.fresh_items if i['id'] in c['reserved_ids']]
                     c['base_price'] = self.menu[c['dish_id']]['price'] * sum(i['fresh_units'] for i in selected) // (len(selected) * self.world['freshness']['maximum'])
+                    if c.get('reservation_id'):
+                        c['base_price'] = math.floor(c['base_price'] * self.world['reservations']['price_multiplier'])
                     self.fresh_items = [i for i in self.fresh_items if i['id'] not in c['reserved_ids']]
                     c['reserved_ids'] = []
                     for kind, count in c['reserved'].items():
@@ -417,10 +451,16 @@ class LiveQuanSim(QuanSim):
                          tip=math.floor(c.get('base_price', self.menu[c['dish_id']]['price']) * self.t['tip_rate']) if ratio >= self.t['tip_min_patience_ratio'] else 0)
                 self.hand = None
                 events.append(('served', {'customer_id': c['id']}))
+                if c.get('reservation_id'):
+                    reservation = next(r for r in self.reservations if r['id'] == c['reservation_id'])
+                    reservation['state'] = 'served'
+                    events.append(('reservation_served', {'id': reservation['id']}))
 
     def snapshot(self):
         snap = super().snapshot()
         snap['fresh_items'] = snapshot_items(self.fresh_items)
+        snap['menu_catalog'] = {key: dict(dish) for key,dish in self.menu.items()}
+        snap['reservations'] = [dict(r) for r in sort_by_id(self.reservations)]
         labels = {k: v.get('label', self.world['dish_labels'].get(k, k)) for k, v in self.menu.items()}
         for table, source in zip(snap['tables'], self.tables):
             table['label'] = source['label']

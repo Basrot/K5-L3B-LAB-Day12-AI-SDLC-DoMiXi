@@ -8,6 +8,7 @@ from ..live_world import load_world
 from ..inventory import KINDS_P1, hold_to_items
 from ..inputs import InputState
 from .freshness import new_item, decay, snapshot_items
+from .reservations import make_reservations
 
 
 class LiveGatherSim(GatherSim):
@@ -21,6 +22,8 @@ class LiveGatherSim(GatherSim):
     def __init__(self, *args):
         super().__init__(*args)
         self.world = load_world()
+        self.live_menu = args[0]['menu']
+        self.reservations = make_reservations(self, self.live_menu)
         self.world_tick = 0
         self.weather = 'sun'
         self.weather_end = self.world['weather']['sun_ticks']
@@ -114,6 +117,8 @@ class LiveGatherSim(GatherSim):
                         break
         if not self.done:
             self._weather_step(events)
+        if not self.done:
+            self._swim_fish()
         if self.done or self._at_surface() or not inp.pressed('interact'):
             return events
         targets = [n for n in sort_by_id(self.collectibles) if n['ready']
@@ -128,6 +133,23 @@ class LiveGatherSim(GatherSim):
                 self.pickup_ticks = self.extras['animation_ticks']
                 events.append(('treasure_picked', {'id': n['id'], 'kind': n['kind'], 'label': n['label']}))
         return events
+
+    def _swim_fish(self):
+        speed = self.world['gather']['live_fish_speed'] / 60
+        xmin, xmax = self.t['bounds']['x']
+        dmin, dmax = self.t['bounds']['d']
+        for fish in sort_by_id(self.fish):
+            angle = math.radians(fish['heading_deg'])
+            vx, vy = math.cos(angle), math.sin(angle)
+            x, depth = fish['pos'][0] + vx*speed, fish['pos'][1] + vy*speed
+            if x < xmin or x > xmax:
+                x = 2*(xmin if x < xmin else xmax)-x
+                vx = -vx
+            if depth < dmin or depth > dmax:
+                depth = 2*(dmin if depth < dmin else dmax)-depth
+                vy = -vy
+            fish['pos'] = [max(xmin,min(xmax,x)), max(dmin,min(dmax,depth))]
+            fish['heading_deg'] = math.degrees(math.atan2(vy,vx)) % 360
 
     def _hazard_hit(self, cause, events):
         if self.done or self.invuln_ticks > 0:
@@ -244,6 +266,9 @@ class LiveGatherSim(GatherSim):
     def snapshot(self):
         snap = super().snapshot()
         snap['fresh_items'] = snapshot_items(self.fresh_items)
+        snap['reservations'] = [dict(r) for r in self.reservations]
+        snap['menu_catalog'] = {key: dict(dish) for key,dish in self.live_menu.items()}
+        snap['menu_labels'] = {key: dish.get('label', self.world['dish_labels'].get(key,key)) for key,dish in self.live_menu.items()}
         snap.update(hazards=[{'id': h['id'], 'kind': h['kind'], 'pos': list(h['pos'])} for h in self.hazards],
                     poison_ticks=self.poison_ticks)
         snap.update(collectibles=self.collectibles, collection=list(self.collection),

@@ -29,6 +29,10 @@
 <canvas id="c"></canvas>
 <nav aria-label="Chọn cảnh"><button data-mode="gather">☀ Sông</button><button data-mode="quan">♨ Quán · đem giỏ vào</button><button data-mode="quan" data-demo="true">Quán mẫu</button><button id="sound-toggle" aria-pressed="false">🔇 Âm thanh</button></nav>
 <div id="campaign-ui" aria-live="polite"></div>
+<div id="shift-actions" style="position:fixed;right:16px;top:55px;z-index:4"></div>
+<button id="view-reservations" style="position:fixed;right:16px;top:108px;z-index:4">📋 Xem đơn đặt trước và nguyên liệu</button>
+<dialog id="reservations-dialog" style="background:#253331;color:#fff0cf;border:2px solid #e8bf78;border-radius:16px;max-height:75vh;overflow:auto;max-width:620px"><h2>Đơn đặt trước</h2><div id="reservations-content"></div><button onclick="document.getElementById('reservations-dialog').close()">Đóng</button></dialog>
+<dialog id="menu-dialog" style="background:#253331;color:#fff0cf;border:2px solid #e8bf78;border-radius:16px;max-height:75vh;overflow:auto"><h2>Thực đơn · Giá niêm yết</h2><div id="menu-content"></div><p>Giá thực tế theo độ tươi · Đơn đặt trước ×1,5</p><button onclick="document.getElementById('menu-dialog').close()">Đóng</button></dialog>
 <audio id="lobby-music" src="/audio/lobby.mp3" loop preload="auto"></audio>
 <script>
 "use strict";
@@ -42,6 +46,7 @@ const ctx = cv.getContext("2d");
 let snap = null, offline = false, transitioning = false;
 const campaignUI = document.getElementById('campaign-ui');
 const lobbyMusic = document.getElementById('lobby-music');
+lobbyMusic.volume = .6;
 let introFrame = 0, shopItem = null, campaignViewKey = '', musicMuted = false, musicAttempted = false;
 const introImages = ['29-intro-father-teaches-text.png','30-intro-father-injured-text.png','31-intro-ut-sen-decides-text.png','32-intro-first-departure-text.png'];
 async function campaignAction(action, extra={}) {
@@ -50,20 +55,40 @@ async function campaignAction(action, extra={}) {
   campaignViewKey=''; return true;
 }
 function syncLobbyMusic(screen) {
-  if (screen === 'title' || screen === 'map') {
-    if (!musicMuted && !musicAttempted) { musicAttempted=true; lobbyMusic.play().catch(()=>{}); }
+  if (['title','map','intro','equipment','shop'].includes(screen)) {
+    if (!musicMuted && !musicAttempted) { musicAttempted=true; playIntroMusic(); }
   } else {lobbyMusic.pause(); musicAttempted=false;}
 }
-document.addEventListener('pointerdown',()=>{
-  if (snap?.campaign && ['title','map'].includes(snap.campaign.screen) && !musicMuted) lobbyMusic.play().catch(()=>{});
+function playIntroMusic() {
+  lobbyMusic.muted = false;
+  return lobbyMusic.play().catch(()=>{
+    const button=campaignUI.querySelector('[data-campaign="music"]');
+    if(button) button.textContent='🔊 Bấm để phát nhạc intro';
+  });
+}
+document.addEventListener('pointerdown',event=>{
+  if(event.target.closest('[data-campaign="music"]')) return;
+  if (snap?.campaign && ['title','map','intro','equipment','shop'].includes(snap.campaign.screen) && !musicMuted) playIntroMusic();
 },{passive:true});
 function renderCampaignUI() {
   const c = snap?.campaign;
+  document.getElementById('view-reservations').hidden=!!c&&c.screen!=='playing';
+  const controls=document.getElementById('shift-actions');
+  const controlsKey=(c?.screen||'')+snap.mode;
+  if(controls.dataset.key!==controlsKey){
+  controls.dataset.key=controlsKey;
+  controls.innerHTML=c?.screen==='playing'?(snap.mode==='gather'?'<button id="early-shift">🌙 Kết thúc sáng · mở quán</button>':'<button id="show-menu">📜 Xem món và giá</button> <button id="early-shift">🌃 Đóng quán sớm · demo</button>'):'';
+  document.getElementById('early-shift')?.addEventListener('click',()=>snap.mode==='gather'?enterEvening():campaignAction('close_evening'));
+  document.getElementById('show-menu')?.addEventListener('click',()=>{
+    document.getElementById('menu-content').innerHTML=Object.entries(snap.menu_catalog||{}).map(([id,dish])=>`<p><strong>${dishName(id)}</strong> · ${dish.price} xu<br><small>${Object.entries(dish.recipe).map(([kind,n])=>itemName(kind)+' ×'+n).join(', ')}</small></p>`).join('');
+    document.getElementById('menu-dialog').showModal();
+  });
+  }
   document.querySelector('nav').style.display = c ? 'none' : '';
   if (!c || c.screen === 'playing') { campaignUI.classList.remove('active'); syncLobbyMusic('playing'); return; }
   campaignUI.classList.add('active'); syncLobbyMusic(c.screen);
   campaignUI.dataset.screen=c.screen;
-  const key=JSON.stringify([c.screen,c.day,c.wallet,c.stars,c.upgrades,c.result,introFrame,shopItem,musicMuted]);
+  const key=JSON.stringify([c.screen,c.day,c.wallet,c.stars,c.upgrades,c.equipped,c.result,introFrame,shopItem,musicMuted]);
   if(key===campaignViewKey)return;
   campaignViewKey=key;
   const bg = name => {campaignUI.style.backgroundImage=`url('/art/${name}')`;};
@@ -73,7 +98,13 @@ function renderCampaignUI() {
     html='<div class="campaign-panel"><h1>Quán Ăn Chợ Nổi</h1><p>Giữ quán sáng đèn cùng Út Sen</p><div class="campaign-actions"><button data-campaign="start">Bắt đầu chơi</button><button data-campaign="music">'+(musicMuted?'Bật nhạc':'Tắt nhạc')+'</button></div></div>';
   } else if(c.screen==='intro'){
     bg(introImages[introFrame]);
-    html='<div class="campaign-panel"><div class="campaign-actions"><button data-campaign="next_intro">'+(introFrame<3?'Tiếp tục':'Bắt đầu hành trình')+'</button><button data-campaign="skip_intro">Bỏ qua</button></div></div>';
+    html='<div class="campaign-panel"><div class="campaign-actions"><button data-campaign="music">'+(musicMuted?'🔊 Bật nhạc intro':'🔊 Nhạc intro · Tắt')+'</button><button data-campaign="next_intro">'+(introFrame<3?'Tiếp tục':'Bắt đầu hành trình')+'</button><button data-campaign="skip_intro">Bỏ qua</button></div></div>';
+  } else if(c.screen==='equipment'){
+    bg('16-upgrade-shop.png');
+    const icons={oxygen:'🫧',helmet:'🤿',fins:'🦶',lamp:'🔦',hp:'❤️'};
+    const stats=level=>Object.entries(level).filter(([key])=>!['level','price'].includes(key)).map(([key,value])=>({oxygen_max_s:`Oxy ${value}s`,max_depth:`Lặn sâu ${value}m`,swim_speed_multiplier:`Tốc độ ×${value}`,reveal_radius:`Đèn ${value}m`,hp_max:`${value} máu`}[key]||value)).join(' · ');
+    const cards=Object.entries(c.upgrade_catalog).map(([id,item])=>`<div style="background:#142c2d;padding:12px;border-radius:12px"><strong>${icons[id]} ${item.label}</strong><p><button data-campaign="equip" data-item="${id}" data-level="-1">${c.equipped[id]===-1?"✓ ":""}Tháo ra</button>${item.levels.map((level,i)=>`<button style="margin:4px;border-width:${c.equipped[id]===i?'3':'1'}px;background:${c.equipped[id]===i?'#447646':'#263c42'}" data-campaign="equip" data-item="${id}" data-level="${i}" ${i>c.upgrades[id]?'disabled':''}>${c.equipped[id]===i?'✓ Đang dùng · ':i>c.upgrades[id]?'🔒 ':''}${i===0?'Cơ bản':'Nâng cấp '+i}<br><small>${stats(level)}${i>c.upgrades[id]?' · '+level.price+' xu':''}</small></button>`).join(' ')}</p></div>`).join('');
+    html=`<div class="campaign-panel"><h2>Chuẩn bị buổi sáng · Ngày ${c.day}</h2><p>Trang bị cơ bản có sẵn. Mua nâng cấp tại shop rồi chọn để sử dụng.</p><div class="campaign-grid">${cards}</div><div class="campaign-actions"><button data-campaign="shop">🛒 Mua trang bị</button><button data-campaign="music">${musicMuted?'Bật nhạc':'Tắt nhạc'}</button><button data-campaign="begin_morning">☀ Trang bị xong · xuống sông</button></div></div>`;
   } else if(c.screen==='map'){
     bg('25-level-select.png');
     const cards=Array.from({length:c.day_count},(_,i)=>{const n=i+1,open=n===1||(c.stars[String(n-1)]||0)>0,star=c.stars[String(n)]||0;return `<button data-campaign="day" data-day="${n}" ${open?'':'disabled'}>Màn ${n} · ${open?'☆'.repeat(3-star)+'★'.repeat(star):'🔒'}</button>`}).join('');
@@ -94,17 +125,30 @@ function renderCampaignUI() {
     }
   }
   campaignUI.innerHTML=html;
+  if(c.screen==='shop') {
+    const actions=campaignUI.querySelector('.campaign-actions');
+    actions?.insertAdjacentHTML('beforeend','<button data-campaign="prepare">Chuẩn bị ngày tiếp theo →</button>');
+  }
 }
 campaignUI.addEventListener('click',async e=>{
   const b=e.target.closest('[data-campaign]');if(!b)return;
   const action=b.dataset.campaign;
-  if(action==='music'){musicMuted=!musicMuted; if(musicMuted)lobbyMusic.pause();else {musicAttempted=true;lobbyMusic.play().catch(()=>{});}campaignViewKey='';renderCampaignUI();}
+  if(action==='music'){musicMuted=lobbyMusic.paused?false:!musicMuted; if(musicMuted)lobbyMusic.pause();else {musicAttempted=true;playIntroMusic();}campaignViewKey='';renderCampaignUI();}
   else if(action==='next_intro'){if(introFrame<3){introFrame++;campaignViewKey='';renderCampaignUI();}else await campaignAction('intro_done');}
   else if(action==='skip_intro'){introFrame=0;await campaignAction('intro_done');}
   else if(action==='back_shop'){shopItem=null;campaignViewKey='';renderCampaignUI();}
   else if(action==='item'){shopItem=b.dataset.item;campaignViewKey='';renderCampaignUI();}
   else if(action==='day'){shopItem=null;await campaignAction('select_day',{day:Number(b.dataset.day)});}
   else if(action==='buy') await campaignAction('buy',{item:b.dataset.item});
+  else if(action==='equip') {
+    const level=Number(b.dataset.level),item=b.dataset.item;
+    const chosen=snap.campaign.equipped[item]===level && level>=0?-1:level;
+    b.disabled=true;
+    if(await campaignAction('equip',{item,level:chosen})){
+      const response=await fetch('/state',{cache:'no-store'});
+      snap=await response.json();campaignViewKey='';renderCampaignUI();
+    } else b.disabled=false;
+  }
   else {if(action==='shop')shopItem=null;await campaignAction(action);}
 });
 // Hoạt ảnh khách đi vào từ cầu gỗ và rời quán (chỉ hiển thị client, không ảnh hưởng sim/headless)
@@ -174,7 +218,7 @@ function stopMusic() {
   if (chaseSource) { try { chaseSource.stop(); } catch (_) {} chaseSource.disconnect(); chaseSource = null; }
 }
 function syncMusic() {
-  const key = !soundEnabled || document.hidden || !snap || snap.finished || transitioning ? ''
+  const key = !soundEnabled || document.hidden || !snap || snap.finished || transitioning || (snap.campaign && snap.campaign.screen!=='playing') ? ''
     : snap.mode === 'gather' && snap.pursuer?.active ? 'chase'
     : snap.mode === 'gather' ? snap.weather : 'quan';
   if (key === musicKey) return;
@@ -526,7 +570,7 @@ function drawGather(w, h) {
     const underwater = p.at_surface === undefined ? p.pos[1] > 0.5 : !p.at_surface;
     if (underwater && meta.reveal_radius) {
       const glow=ctx.createRadialGradient(px,py,4,px,py,meta.reveal_radius*s);
-      glow.addColorStop(0,'rgba(255,238,155,.27)');glow.addColorStop(1,'rgba(255,238,155,0)');
+      glow.addColorStop(0,'rgba(255,238,155,.52)');glow.addColorStop(.6,'rgba(255,238,155,.18)');glow.addColorStop(1,'rgba(255,238,155,0)');
       ctx.fillStyle=glow;ctx.beginPath();ctx.arc(px,py,meta.reveal_radius*s,0,Math.PI*2);ctx.fill();
     }
     if (meta.catch_radius && underwater) { ctx.strokeStyle = "rgba(255,255,255,.25)"; ctx.beginPath(); ctx.arc(px, py, meta.catch_radius * s, 0, Math.PI * 2); ctx.stroke(); }
@@ -618,6 +662,10 @@ function drawGather(w, h) {
     text('☠ TRÚNG ĐỘC! Oxy hao nhanh · '+Math.ceil(snap.poison_ticks/60)+'s',w/2,175,{size:19,align:'center',color:'#efb3ff'});
   }
   // HUD trên
+  if(snap.campaign){
+    const gear=`🤿 ${meta.max_depth||20}m · 🔦 ${meta.reveal_radius||3}m · 🦶 ${Number(meta.swim_speed||0).toFixed(1)}m/s · 🫧 ${Math.round((p.oxygen_max_ticks||0)/60)}s · ❤️ ${p.hp_max}`;
+    text(gear,w/2,h-110,{size:15,align:'center',color:'#aff7ce'});
+  }
   text("⏱ " + fmtTime(snap.time_left_ticks), 14, 28, { size: 20 });
   if (p && p.oxygen_ticks !== undefined && p.oxygen_max_ticks) {
     const low = p.oxygen_ticks < p.oxygen_max_ticks * 0.25;
@@ -1016,6 +1064,22 @@ function frame() {
     text(offline ? "Không kết nối được máy chủ…" : "Đang tải…", w / 2, h / 2, { align: "center", size: 18 });
   }
 }
+document.getElementById('view-reservations').addEventListener('click',()=>{
+  if(!snap)return;
+  const total={};
+  const rows=(snap.reservations||[]).map(r=>{
+    const dish=snap.menu_catalog?.[r.dish_id],recipe=dish?.recipe||{};
+    const remaining=Math.max(0,Math.ceil((r.arrival_tick-(snap.mode==='quan'?snap.elapsed||0:0))/60));
+    const ingredients=Object.entries(recipe).map(([kind,count])=>{
+      total[kind]=(total[kind]||0)+count;
+      return `${itemName(kind)} ×${count}`;
+    }).join(', ');
+    return `<section style="padding:12px 0;border-bottom:1px solid #786749"><strong>${r.id} · Bàn ${r.table_id} · ${dishName(r.dish_id)}</strong><p>${snap.mode==='gather'?'Đến sau khi mở quán':'Còn'} ${remaining}s · ${r.state}</p><p>Nguyên liệu: ${ingredients}</p><small>Giá niêm yết ${dish?.price||0} xu · Đặt trước ×1,5, điều chỉnh theo độ tươi</small></section>`;
+  }).join('');
+  document.getElementById('reservations-content').innerHTML=rows+`<h3>Tổng nguyên liệu cho hai đơn</h3><p>${Object.entries(total).map(([kind,n])=>itemName(kind)+' ×'+n).join(', ')||'Chưa có đơn'}</p>`;
+  down.clear();pushInput();
+  document.getElementById('reservations-dialog').showModal();
+});
 requestAnimationFrame(frame);
 </script>
 </body>
