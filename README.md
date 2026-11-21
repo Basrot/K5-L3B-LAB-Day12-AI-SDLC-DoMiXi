@@ -1,80 +1,59 @@
-# Day 12 — AI SDLC: Quán Ăn Chợ Nổi
+# Day 12 — AI SDLC: Quán Ăn Chợ Nổi (Nhóm DoMiXi)
 
-> **Làm theo nhóm 4–6 người** · Dùng AI để xây game 2D qua **4 phase** trong **3 giờ**: Út Sen lặn bắt cá, hái rau trên mặt nước rồi tối mở quán phục vụ khách.
-> **Yêu cầu từng phase mở đúng mốc giờ tại lab board:** **[Chợ Nổi Lab](https://claude.ai/artifact/E35v787wSx2wDgPTNhMVDg)** (cần đăng nhập claude.ai; có trợ giảng AI cho từng phase).
+> **Làm theo nhóm 4 người** · Dùng AI để xây game 2D qua **4 phase** trong **3 giờ**: Út Sen lặn bắt cá, hái rau trên mặt nước, tối mở quán phục vụ khách và nâng cấp đồ nghề qua Shop theo vòng ngày (Test Contract **v1.1**).
+> **Lab board:** **[Chợ Nổi Lab](https://claude.ai/artifact/E35v787wSx2wDgPTNhMVDg)**
 
-## Bắt buộc (chỉ có thế)
+## Bắt đầu nhanh (≤ 3 lệnh từ clone sạch)
 
-Cách làm việc kỹ thuật là **tự do** (push thẳng, nhánh + PR, pair, có hay không CI…). Cái bắt buộc:
-
-1. **Một repo chung:** trưởng nhóm **fork** repo này, đặt tên `K5-L3B-LAB-Day12-AI-SDLC-<ten-nhom>`, thêm mọi thành viên làm collaborator (*Settings → Collaborators*, quyền Write) và để repo **public** (giảng viên xem được, không cần mời).
-2. **Cả nhóm cùng commit** bằng tài khoản GitHub của mình, mỗi người **≥ 3 commit có nội dung** (làm cặp thì ghi `Co-authored-by:`).
-3. **Điền [`TEAM.md`](TEAM.md):** danh sách thành viên + thỏa thuận làm việc nhóm; sửa `team_size` trong [`game.contract.json`](game.contract.json). Commit của người không có trong `TEAM.md` không được tính.
-4. **Gắn tag** `phase-1` … `phase-4` đúng hạn; chạy được tại từng tag.
-5. **Ghi chép tối thiểu:** `docs/verification/phase-n.md`, `docs/clarify.md`, `docs/ai-usage-log.md`, `docs/retro.md`, `docs/members/<handle>.md`.
-
-## Bắt đầu nhanh
-
+### macOS / Linux
 ```bash
-git clone <fork-của-nhóm> && cd <fork-của-nhóm>
-PYTHONPATH=tests:. python3 -m unittest discover -s tests -v        # smoke test
-python3 -m chonoi.live --mode gather                                # chơi thử trên trình duyệt (tùy chọn)
+git clone https://github.com/Basrot/K5-L3B-LAB-Day12-AI-SDLC-DoMiXi.git && cd K5-L3B-LAB-Day12-AI-SDLC-DoMiXi
+PYTHONPATH=tests:. python3 -m unittest discover -s tests -v        # chạy toàn bộ test
+python3 -m chonoi.live --mode campaign                              # chơi thử trên trình duyệt
 ```
 
-Game cần chế độ **headless** theo Test Contract (`python3 -m chonoi.headless --mode gather|quan …`) để được chạy và chấm tự động. **Công nghệ không ràng buộc**: khung Python trong `chonoi/` chỉ là gợi ý, chi tiết ở [`docs/STARTER.md`](docs/STARTER.md).
+### Windows (PowerShell)
+```powershell
+python tools/test_windows.py                                        # chạy toàn bộ test (thay alias python3 trong bộ nhớ)
+python -X utf8 -m chonoi.live --mode campaign --port 8080           # chơi thử tại http://127.0.0.1:8080/
+```
 
-## Tự do sáng tạo
+### Chạy Headless (Test Contract v1.1)
+```bash
+python3 -m chonoi.headless --mode gather --seed 1 --ticks 600 --out gather.jsonl --inventory-out catch.json
+python3 -m chonoi.headless --mode quan   --seed 1 --inventory catch.json --ticks 600 --out quan.jsonl
+python3 -m chonoi.headless --mode day    --days 1 --seed 1 --ticks 22200 --out day.jsonl
+```
 
-### Chơi theo màn (bản live)
+## Điều khiển & cách tính điểm
+- **Điều khiển:** `WASD` / phím mũi tên để bơi (`gather`) hoặc đi lại (`quan`); `Space` bắt cá dưới nước; `E` tương tác (cập bến / hái rau / nhặt đồ ở buổi sáng; nấu / lấy món / phục vụ ở buổi tối); `R` chơi lại.
+- **Tính điểm (Contract v1.1):** `score = earned + 100 × floor(reputation)` (tiền tính theo nghìn đồng; mua nâng cấp trong Shop trừ vào `money`, giữ nguyên `earned` và `score`).
 
-Chạy `python -m chonoi.live --mode campaign` (hoặc bỏ `--mode`), rồi mở địa chỉ in ra. Màn chào phát nhạc `assets/audio/lobby-music.mp3` do người dùng cung cấp; nếu trình duyệt chặn tự phát, chạm/bấm một lần để nhạc bắt đầu. Lần chơi đầu hiện bốn cảnh intro, sau đó chọn màn. Mỗi màn đi lặn buổi sáng, mang nguyên liệu sang quán buổi tối, nhận sao và xu rồi nâng cấp đồ trước màn kế tiếp. Tiến độ được lưu ở `.chonoi-save.json` tại máy chạy game.
+---
 
-Trong ca lặn hoặc ca quán, bấm **⌂ Về sảnh** để tạm dừng lượt đang chơi. Ở sảnh, bấm **Tiếp tục lượt chơi** để quay lại đúng ca, hoặc **Xem lại intro** để xem bốn cảnh mở đầu. Bản đồ cũng có nút **Về sảnh** và **Xem lại intro**.
+## Sáng tạo của nhóm (chỉ bật ở bản live — tắt hoàn toàn ở headless)
 
-Giá món lấy từ `game.contract.json`; thưởng sao và giá đồ lặn bản live lấy từ `chonoi/progression.json`. Công thức ở `docs/plan/level-economy.md`. Chế độ `--mode gather` và `--mode quan` vẫn chạy riêng như trước; headless không dùng tiến độ màn.
+Toàn bộ mở rộng sáng tạo nằm tách riêng trong `chonoi/sim/live_gather.py`, `chonoi/sim/live_quan.py`, `chonoi/sim/freshness.py`, `chonoi/progression.py`, `chonoi/progression.json`, `chonoi/live_gather.json`, `chonoi/live_world.json` và `chonoi/web/index.html` (nạp qua `deepcopy`, **không sửa `game.contract.json`** và **tắt hoàn toàn ở chế độ headless**):
 
-### Lặn có animation (bản live)
+1. **Chơi theo màn (`--mode campaign`), cốt truyện mở đầu & sảnh chờ:** Chạy `python -m chonoi.live --mode campaign` (hoặc bỏ `--mode`). Màn chào phát nhạc `assets/audio/lobby-music.mp3`; lần chơi đầu hiện 4 cảnh intro, chọn màn, đi lặn sáng → mở quán tối → nhận sao/xu → nâng cấp bình oxy, mũ, chân vịt, đèn (`chonoi/progression.json`, `docs/plan/level-economy.md`). Trong ca bấm **⌂ Về sảnh** để tạm dừng và quay lại sau, hoặc **Xem lại intro**. Tiến độ lưu tại `.chonoi-save.json` ở máy chạy game.
+2. **Lặn có animation & bộ sưu tập dưới nước:** Atlas 4×4 (`assets/art-pack/10-underwater-animation.png`: lặn, bơi chìm, nhặt đồ, nổi) chọn frame theo vận tốc và tick; bộ sưu tập vỏ sò, ngọc trai, bùa cá, bình gốm (`chonoi/live_gather.json`) tách riêng khỏi kho nguyên liệu chuẩn.
+3. **Sông mở rộng, thời tiết động, độ tươi nguyên liệu & Chú Áo Vàng:** Thời tiết xoay vòng nắng / mưa / tuyết / gió đảo hướng / bong bóng oxy / mưa cá; độ tươi nguyên liệu (`chonoi/sim/freshness.py`); khi mưa và đang lặn, Chú Áo Vàng (`11-rain-pursuer.png`) truy đuổi (chạm mất 1 HP, có miễn nhiễm để thoát, nổi lên hoặc hết mưa thì dừng), kèm âm thanh `chieu-troi-mua.mp3`.
+4. **Nhà bè quán ăn sống động:** Ảnh nền nhà bè (`15-quan-cho-noi.jpg`) căn khớp 2 bếp lò và 3 bàn gỗ ven sông; bộ sprite khách ngồi gọi món & chờ bếp (`16-seated-waiting.png`) nối mượt sang ăn & uống (`13-dining-cast.png`), kèm hoạt ảnh khách đi bộ từ cầu gỗ vào ngồi bàn và rời quán.
+5. **Sự kiện ngẫu nhiên buổi tối (live):** Nhân vật Khá Bảnh thu bảo kê (`17-kha-banh.png`) và Chú Công An tuần tra bắt giữ (`18-cong-an.png`) trong `LiveQuanSim`.
 
-Trên Windows: `python -X utf8 -m chonoi.live --mode gather`, mở địa chỉ in ra.
-Nhấn **S / ↓** để lặn, **W / ↑** để nổi, **A/D** để bơi ngang;
-**Space** bắt cá dưới nước, **E** nhặt đồ gần nhân vật / hái cây trên mặt nước / cập bến.
-Oxy hồi ở mặt nước; hết oxy sẽ mất máu dần, ngất làm mất giỏ nguyên liệu. **R** chơi lại.
+### Bằng chứng lõi headless vẫn đúng
+- `tests/test_diving.py`, `tests/test_live_world.py`: xác nhận `Session("gather", ...)` và `headless` không có `collectibles`, không dùng tiến độ campaign, không đột biến `game.contract.json`, và `inventory_items()` lọc chỉ giữ đúng 6 nguyên liệu lõi Contract v1.1.
+- `tests/test_smoke_p1.py`, `tests/test_quan_orders.py`, `tests/test_quan_v11.py`, `tests/test_v11_core.py` + bằng chứng chạy thật tại [`docs/verification/phase-2.md`](docs/verification/phase-2.md) và [`docs/proof/phase-2/`](docs/proof/phase-2/).
 
-Animation dùng atlas `assets/art-pack/10-underwater-animation.png`: 4 hàng lần lượt
-lặn, bơi chìm, nhặt đồ, nổi; mỗi hàng 4 frame. Renderer chọn hàng từ vận tốc và trạng thái
-nhặt, đổi frame theo tick, lật ảnh khi bơi trái. Không cần chạy nhiều ảnh bằng tay.
+---
 
-Vỏ sò, ngọc trai, bùa cá là bộ sưu tập sáng tạo **chỉ trong live**, không nằm trong kho
-nguyên liệu và không đổi công thức/điểm contract. Dữ liệu ở `chonoi/live_gather.json`.
-Kiểm tra trên Windows: `python tools/test_windows.py` (dùng Python hiện tại thay alias
-`python3` trong bộ nhớ khi chạy test; không sửa contract).
-
-Ngoài phần đề yêu cầu, nhóm được **thêm** nhân vật, loài cá/cây, sinh vật, món, bản đồ, cơ chế, câu chuyện, đồ họa, âm nhạc… với ba điều kiện: **không phá phần cố định** (tắt ở headless), ghi mục **"Sáng tạo của nhóm"** trong README của nhóm, và **làm lõi đúng trước**.
-
-## Lịch 3 giờ
+## Bắt buộc & Lịch 3 giờ
 
 | Mốc | Phase | Hạn tag |
 |---|---|---|
 | 0:00 | Phase 1 (PRD-0) | `phase-1` trước 1:00 |
-| 1:00 | Phase 2 | `phase-2` trước 1:55 |
+| 1:00 | Phase 2 (TICKET-02, v1.1) | `phase-2` trước 1:55 |
 | 1:55 | Phase 3 | `phase-3` trước 2:30 |
 | 2:30 | Phase 4 | `phase-4` + Release `v1.0.0` trước 3:00 |
 
-Hết giờ mỗi phase thì gắn tag rồi đi tiếp; chỗ chưa xong ghi trung thực trong bằng chứng.
-
-## Đánh giá (100 điểm)
-
-| Hạng mục | Điểm |
-|---|---|
-| Test tự động ẩn (headless, gồm kiểm tra lại phase trước) | 25 |
-| Làm việc nhóm (một repo chung, chia việc, tích hợp, đổi yêu cầu) | 25 |
-| Kiểm chứng & bằng chứng | 15 |
-| Harness AI (AGENTS.md, skill, nhật ký dùng AI) | 10 |
-| Đánh giá & retro | 10 |
-| Chất lượng sản phẩm (đúng yêu cầu, mở rộng/sáng tạo) | 10 |
-| Demo | 5 |
-
-## Quy định
-
-- Dùng AI thoải mái; **không sao chép repo của nhóm khác**; bằng chứng phải thật.
-- Nhân vật, bối cảnh là bản gốc của lab; asset ngoài chỉ dùng CC0/CC-BY/MIT hoặc tự tạo, ghi nguồn trong `CREDITS.md`. Không commit API key, token, `.env`.
+Chi tiết khung kỹ thuật ở [`docs/STARTER.md`](docs/STARTER.md), quy ước AI ở [`AGENTS.md`](AGENTS.md), phân công nhóm ở [`TEAM.md`](TEAM.md) và [`PHAN_CONG_CONG_VIEC.md`](PHAN_CONG_CONG_VIEC.md).

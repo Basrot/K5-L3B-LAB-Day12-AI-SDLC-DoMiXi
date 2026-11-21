@@ -1,35 +1,38 @@
 # AGENTS.md — hướng dẫn chung cho mọi agent AI của nhóm
 
-> Cập nhật file này qua các phase (lịch sử git phải cho thấy điều đó). Ngắn gọn, có lệnh chạy thật.
+> Cập nhật qua các phase: Phase 1 (khởi tạo + live animation Windows) → Phase 2 (Contract v1.1: `gather` cá bơi/sinh/Cá Sấu, `quan` 2 bếp/4 bàn/6 món, `--mode day`/Shop/`pause`, và 2 skill kiểm chứng). Ngắn gọn, có lệnh chạy thật.
 
 ## Lệnh
-- Test: `PYTHONPATH=tests:. python3 -m unittest discover -s tests -v`
-- Headless: `python3 -m chonoi.headless --mode gather|quan --seed 1 --ticks 600 --out out.jsonl`
-- Chơi thử trên trình duyệt: `python3 -m chonoi.live --mode gather|quan` (mở địa chỉ in ra; WASD, E, Space, R)
+- Test (Linux/macOS): `PYTHONPATH=tests:. python3 -m unittest discover -s tests -v`
+- Test (Windows): `python tools/test_windows.py`
+- Kiểm thành viên: `python tools/check_team.py` (hoặc `python3 tools/check_team.py`)
+- Headless v1.1: `python -m chonoi.headless --mode gather|quan|day --seed 1 [--days 1..5] --ticks 600 --out out.jsonl`
+- Chơi thử trên trình duyệt (Windows): `python -X utf8 -m chonoi.live --mode gather|quan [--port 8080]` (WASD, E, Space, R)
 
 ## Cấu trúc & quy ước
-- (Starter Python là TÙY CHỌN; nhóm có thể dùng ngôn ngữ khác nếu giữ Test Contract.) Khung do giảng viên cấp: `chonoi/{headless,inputs,scenario,contract,rng,ids,jsonl,inventory,runner,live}.py` và `chonoi/web/`. Hạn chế sửa; nếu phải sửa thì báo cả nhóm và ghi lại lý do.
-- Luật chơi của nhóm: `chonoi/sim/gather.py`, `chonoi/sim/quan.py` (tìm `TODO(nhóm)`).
+- Khung kỹ thuật: `chonoi/{headless,inputs,scenario,contract,rng,ids,jsonl,inventory,runner,live}.py` và `chonoi/web/`. Hạn chế sửa; mọi thay đổi ở starter (ví dụ nâng cấp Contract v1.1 trên `contract.py`, `inventory.py`, `scenario.py`, `inputs.py`, `runner.py`, `headless.py`) phải ghi rõ lý do trong commit và `docs/clarify.md`.
+- Luật chơi lõi (headless): `chonoi/sim/gather.py`, `chonoi/sim/quan.py`, `chonoi/sim/quan_orders.py`, `chonoi/sim/day.py`.
+- Phần sáng tạo **chỉ dùng ở bản live** (tắt hoàn toàn ở headless): `chonoi/sim/live_gather.py`, `chonoi/sim/live_quan.py`, `chonoi/live_gather.json`, `chonoi/live_world.json`, `chonoi/live_world.py`.
 - **Số liệu chỉ đọc từ `game.contract.json` / dữ liệu**, không hard-code trong luật.
 - Mọi số ngẫu nhiên đi qua `Streams` (`chonoi/rng.py`); không dùng `random` toàn cục, không dùng đồng hồ hệ thống.
 - Sắp danh sách thực thể bằng `ids.sort_by_id`; cấp id bằng `IdAllocator`.
 
 ## Nên tránh
-- Không sửa `docs/contracts/`, `game.contract.json` (khóa contract) hoặc schema kho khi chưa báo cả nhóm (đổi hợp đồng ảnh hưởng mọi module).
-- Không làm hỏng nhánh chính: trước khi đẩy, chạy test.
-- Không bịa yêu cầu: chỗ mơ hồ thì ghi `docs/clarify.md` và hỏi PO.
-- Không sửa test cho xanh khi luật sai; phải sửa luật hoặc ghi lý do đổi test trong commit.
+- Không sửa `docs/contracts/`, `game.contract.json` hoặc schema kho khi chưa báo cả nhóm.
+- Không đẩy lên `main` khi chưa chạy test xanh (`python tools/test_windows.py`).
+- Không bịa yêu cầu: chỗ mơ hồ ghi `docs/clarify.md` và hỏi PO / Anh Năm.
+- Không sửa test cho xanh khi luật sai; nếu cập nhật test cũ do đổi luật phase mới (ví dụ v1.0 → v1.1), phải ghi rõ lý do trong commit và `docs/verification/phase-n.md`.
 
 ## Quy tắc làm việc với agent
-- Mỗi agent một việc rõ ràng (một lát). Cho agent đọc PRD/ticket đúng phase và hợp đồng kho trước.
-- Agent làm xong phải chạy test và ghi kết quả vào mô tả commit hoặc `docs/proof/`; người đọc lại thay đổi trước khi đẩy.
-- Sáng tạo thêm được khuyến khích nhưng phải tắt ở headless (xem README, mục "Tự do sáng tạo").
+- Mỗi agent một việc rõ ràng (một lát). Đọc PRD/ticket đúng phase và hợp đồng kho trước khi sửa code.
+- Agent làm xong phải chạy test và ghi kết quả thật vào mô tả commit hoặc `docs/proof/phase-n/`; người đọc lại diff trước khi đẩy.
+- Sáng tạo thêm được khuyến khích nhưng **phải cô lập hoàn toàn khỏi headless** (xem `README.md`, mục "Sáng tạo của nhóm").
 
 ## Skills / hooks của nhóm
+Đặt tại `.agents/skills/`:
+1. **`smoke-inventory-handoff`** (`.agents/skills/smoke-inventory-handoff/SKILL.md`): dùng trước khi gộp PR / gắn tag để chạy kiểm chứng hộp đen liên thông kho 2 tiến trình (`gather --inventory-out` → `quan --inventory`) và vòng ngày `--mode day --days 1`.
+2. **`check-determinism-and-contract`** (`.agents/skills/check-determinism-and-contract/SKILL.md`): dùng sau khi sửa luật sim/live để kiểm tra tính tất định byte-từng-byte trên cả 3 mode (`gather`, `quan`, `day`), cô lập phần sáng tạo live khỏi contract và chạy `tools/check_team.py`.
 
-## Animation và đồ nhặt live
-- Atlas: `assets/art-pack/10-underwater-animation.png` (4 cột × 4 hàng).
-- Đồ sưu tập chỉ dùng trong `sim/live_gather.py`, cấu hình ở `chonoi/live_gather.json`; không đưa vào headless hoặc schema kho.
-- Starter `live.py`/`web/index.html` đã sửa để phục vụ ảnh và render animation; không thay đổi CLI headless.
-- Windows: `python -X utf8 -m chonoi.live --mode gather`; test `python tools/test_windows.py`.
-- (Ghi tên và khi nào dùng; tối thiểu 2 skill/hook/command nhóm tự viết, đặt ở `.agents/skills/` hoặc tương đương.)
+## Ghi chú bản live (đồ họa & âm thanh)
+- Atlas lặn: `assets/art-pack/10-underwater-animation.png` (4×4); nền nhà bè quán: `15-quan-cho-noi.jpg`; khách ngồi chờ/gọi món: `16-seated-waiting.png` (4×2); nhân vật sáng tạo live: `11-rain-pursuer.png`, `17-kha-banh.png`, `18-cong-an.png`; âm thanh: `chieu-troi-mua.mp3`.
+- Mọi tính năng live cấu hình riêng trong `chonoi/live_gather.json` và `chonoi/live_world.json`, nạp qua `deepcopy` trong `live_tuning()`, tuyệt đối không ghi vào `game.contract.json` hoặc file kho headless.
