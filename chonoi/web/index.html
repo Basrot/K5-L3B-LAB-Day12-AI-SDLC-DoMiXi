@@ -98,14 +98,14 @@ function renderCampaignUI() {
   if (!c || c.screen === 'playing') { campaignUI.classList.remove('active'); syncLobbyMusic('playing'); return; }
   campaignUI.classList.add('active'); syncLobbyMusic(c.screen);
   campaignUI.dataset.screen=c.screen;
-  const key=JSON.stringify([c.screen,c.day,c.wallet,c.stars,c.upgrades,c.equipped,c.result,introFrame,shopItem,musicMuted]);
+  const key=JSON.stringify([c.screen,c.day,c.wallet,c.stars,c.upgrades,c.equipped,c.can_resume,c.result,introFrame,shopItem,musicMuted]);
   if(key===campaignViewKey)return;
   campaignViewKey=key;
   const bg = name => {campaignUI.style.backgroundImage=`url('/art/${name}')`;};
   let html='';
   if(c.screen==='title'){
     bg('24-title-screen.png');
-    html=`<div class="campaign-panel"><h1>Quán Ăn Chợ Nổi</h1><p>Giữ quán sáng đèn cùng Út Sen</p><div class="campaign-actions">${c.can_resume?'<button data-campaign="resume">Tiếp tục lượt chơi</button>':''}<button data-campaign="start">Chọn màn</button><button data-campaign="replay_intro">Xem lại intro</button><button data-campaign="music">${musicMuted?'Bật nhạc':'Tắt nhạc'}</button></div></div>`;
+    html=`<div class="campaign-panel"><h1>Quán Ăn Chợ Nổi</h1><p>Giữ quán sáng đèn cùng Út Sen</p><div class="campaign-actions">${c.can_resume?'<button data-campaign="resume">Tiếp tục lượt chơi</button>':''}<button data-campaign="start">Bắt đầu · xem intro</button><button data-campaign="replay_intro">Xem lại intro</button><button data-campaign="music">${musicMuted?'Bật nhạc':'Tắt nhạc'}</button></div></div>`;
   } else if(c.screen==='intro'){
     bg(introImages[introFrame]);
     html='<div class="campaign-panel"><div class="campaign-actions"><button data-campaign="music">'+(musicMuted?'🔊 Bật nhạc intro':'🔊 Nhạc intro · Tắt')+'</button><button data-campaign="next_intro">'+(introFrame<3?'Tiếp tục':'Bắt đầu hành trình')+'</button><button data-campaign="skip_intro">Bỏ qua</button></div></div>';
@@ -144,6 +144,7 @@ campaignUI.addEventListener('click',async e=>{
   const b=e.target.closest('[data-campaign]');if(!b)return;
   const action=b.dataset.campaign;
   if(action==='music'){musicMuted=lobbyMusic.paused?false:!musicMuted; if(musicMuted)lobbyMusic.pause();else {musicAttempted=true;playIntroMusic();}campaignViewKey='';renderCampaignUI();}
+  else if(action==='start'){introFrame=0;await campaignAction('start');}
   else if(action==='replay_intro'){introFrame=0;await campaignAction('replay_intro');}
   else if(action==='next_intro'){if(introFrame<3){introFrame++;campaignViewKey='';renderCampaignUI();}else await campaignAction('intro_done');}
   else if(action==='skip_intro'){introFrame=0;await campaignAction('intro_done');}

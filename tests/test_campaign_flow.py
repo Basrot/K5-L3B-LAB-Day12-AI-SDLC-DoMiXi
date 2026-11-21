@@ -4,6 +4,23 @@ from chonoi.live import CampaignLiveGame
 
 
 class CampaignFlowTest(unittest.TestCase):
+    def test_lobby_resume_and_replay_intro_preserve_session(self):
+        game=CampaignLiveGame(load_contract()['tuning'],3)
+        game._save_progress=lambda:None
+        game.action({'action':'start'})
+        game.action({'action':'intro_done'})
+        game.action({'action':'begin_morning'})
+        session=game.session
+        game.action({'action':'title'})
+        self.assertEqual(game.screen,'title')
+        game.action({'action':'replay_intro'})
+        self.assertEqual(game.screen,'intro')
+        game.action({'action':'intro_done'})
+        self.assertEqual(game.screen,'title')
+        game.action({'action':'resume'})
+        self.assertEqual(game.screen,'playing')
+        self.assertIs(game.session,session)
+
     def test_intro_equipment_morning_evening_results_shop(self):
         game = CampaignLiveGame(load_contract()['tuning'], 3)
         game._save_progress = lambda: None
