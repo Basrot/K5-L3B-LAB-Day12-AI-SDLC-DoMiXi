@@ -2,7 +2,7 @@
 
 - **Nhóm:** DoMiXi (`Basrot`, `BFNGOC2`, `daongochan`, `DucTai2804`)
 - **Hợp đồng:** Test Contract **v1.3** (`game.contract.json`: `contract_version: "1.3"`, `bench_cmd`, `soak_cmd`; gameplay, tuning, kho cá thể và JSONL giữ nguyên v1.2).
-- **Lệnh kiểm thử chạy thật trên Windows:** `python tools/test_windows.py` (**111/111 tests OK**), `python tools/check_team.py` (**OK: 4 thành viên**).
+- **Lệnh kiểm thử chạy thật trên Windows:** `python tools/test_windows.py` (**112/112 tests OK**), `python tools/check_team.py` (**OK: 4 thành viên**).
 
 ## 1. Ma trận truy vết AC-P4 → Bằng chứng → Kết quả
 
@@ -35,6 +35,6 @@
 - **Tiến triển Ngày 1 → Ngày 10:** `earned: 43 → 258`, `reputation: 3.2 → 4.2`, `score: 343 → 658` (D6–D10 lặp đúng `day_plan` D1–D5).
 
 ### 2.3 Kiểm thử hồi quy P1–P3 + v1.3 & Cô lập sáng tạo
-- `python tools/test_windows.py`: **111/111 tests OK** (gồm toàn bộ smoke P1, đơn hàng/giữ chỗ, v1.1 `gather`/`quan`/`day`, v1.2 độ tươi `Fraction`, v1.3 `bench`/`soak`/cảnh báo, chiến dịch & sự kiện live).
+- `python tools/test_windows.py`: **112/112 tests OK** (gồm toàn bộ smoke P1, đơn hàng/giữ chỗ, v1.1 `gather`/`quan`/`day`, v1.2 độ tươi `Fraction`, v1.3 `bench`/`soak`/cảnh báo, chiến dịch, va chạm quán live & sự kiện live).
 - `python tools/check_team.py`: `OK: 4 thành viên: Basrot, BFNGOC2, daongochan, DucTai2804`.
 - Clone sạch từ commit `HEAD` vào thư mục tạm: kiểm chạy kiểm thử, `check_team.py`, headless và khởi chạy HTTP server `chonoi.live` đều hoạt động trực tiếp bằng thư viện chuẩn Python (xem [`docs/proof/phase-4/clean-clone.txt`](../proof/phase-4/clean-clone.txt)).

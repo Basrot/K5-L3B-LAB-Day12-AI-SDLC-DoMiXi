@@ -1,13 +1,11 @@
 # DucTai2804 (Trần Trọng Đức Tài) — phản tư cá nhân
 
-- **Tôi đã làm (kèm link commit):**
-  - Quản lý và hoàn thiện Lát 4 Quán (`sim/quan`): logic bếp, bưng bê, phục vụ, đóng ca, cộng tip theo tỉ lệ kiên nhẫn (`8c601ea`).
-  - Tích hợp và kiểm thử Contract v1.2 trong quán: tiêu thụ kho cá thể theo ID, tính tươi chính xác `Fraction` và chốt giá theo tươi.
-  - Sáng tạo tính năng Live: Nhân vật Khá Bảnh vào thu bảo kê 50k, Chú Công An tuần tra can thiệp giải cứu (`c1c1b21`), Ca sĩ Jack J97 hát *Thiên Lý Ơi* biểu diễn sân khấu giúp tăng tip và tặng fan donation (`1148250`).
-- **Tôi đã review:**
-  - Rà soát kiểm thử liên thông kho 2 tiến trình, luồng campaign, và đồng bộ giải quyết xung đột merge với `origin/main` (`9020554`, `ca81209`, `6774666`).
-- **AI sai ở đâu và tôi phát hiện thế nào:**
-  - AI ban đầu tính hao độ tươi bằng số thực float dẫn đến sai số làm tròn khi so sánh ngưỡng ươn 30; tôi phát hiện qua test ranh giới và chuẩn hóa sang `Fraction`.
-  - AI để nhân vật Khá Bảnh đi lang thang vô hạn trong quán; tôi yêu cầu điều chỉnh kịch bản có thời điểm vào/ra và phối hợp phản xạ cùng Công An.
-- **Điều tôi học được:**
-  - Kỹ năng chia module độc lập trong kiến trúc SDLC: cô lập triệt để phần sáng tạo live khỏi luật headless để luôn bảo đảm tính tất định 100%.
+- **Tôi đã làm (kèm commit):**
+  - Hoàn thiện & rà Lát 4 Quán (`sim/quan`): logic bếp, bưng bê, phục vụ, đóng ca, tip theo kiên nhẫn (`8c601ea`).
+  - Kiểm thử Contract v1.2 trong quán (kho cá thể, `Fraction`, chốt giá theo tươi) và cập nhật phản tư/tài liệu cuối phase (`ec6dd2a`).
+  - Sáng tạo bản Live: Khá Bảnh thu bảo kê 50k, Chú Công An tuần tra bắt giữ (`c1c1b21`), Ca sĩ Jack hát *Thiên Lý Ơi* tăng tip và fan donation (`1148250`).
+- **Tôi đã review:** Kiểm thử liên thông kho 2 tiến trình, luồng campaign và xử lý gộp nhánh trên `main` (`9020554`, `ca81209`, `6774666`).
+- **AI sai ở đâu & cách phát hiện:**
+  - AI ban đầu tính hao tươi bằng `float` gây sai số ngưỡng 30; phát hiện qua test biên và đổi sang `Fraction`.
+  - AI để Khá Bảnh đi lang thang vô hạn; tôi chỉnh lại chu kỳ vào/ra và phối hợp cùng Công An.
+- **Bài học:** Tách module rõ ràng và cô lập sáng tạo live khỏi lõi headless giúp bảo đảm tính tất định 100%.
