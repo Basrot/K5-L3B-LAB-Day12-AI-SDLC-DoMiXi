@@ -11,14 +11,13 @@
 | Hợp đồng file kho liên thông 2 tiến trình (`gather --inventory-out` → `quan --inventory`) | Chạy 2 tiến trình headless theo ví dụ PRD-0 mục G (`seed=42`) + `test_smoke_p1.Integration` | [smoke-two-process.txt](../proof/phase-1/smoke-two-process.txt), [test-lat3.txt](../proof/phase-1/test-lat3.txt) | **Đạt** (`catch.json={"items":{"bong_sung":2,"ca_loc":1}}`, quán nạp đúng và sinh khách ở tick 120) |
 | Quán Lát 3 (N3-01..N3-03): sinh khách theo `phase_tick`, chọn bàn id nhỏ nhất, kho khả dụng & giữ chỗ không trùng, `no_dish`, kiên nhẫn, rời bàn `patience`/`closing` & dọn liên kết | `python tools/test_windows.py` (`test_quan_orders.py`: 10 unit/headless tests) | [test-lat3.txt](../proof/phase-1/test-lat3.txt), [smoke-two-process.txt](../proof/phase-1/smoke-two-process.txt) | **Đạt** |
 | Quán Lát 3 (N3-04): dựng fixture 4 trạng thái đơn & từ chối mọi mâu thuẫn mức luật mã `2` trước khi ghi JSONL | `python tools/test_windows.py` (`QuanFixtureValidation`: 4 fixture hợp lệ + 25 case lỗi hộp đen) | [test-lat3.txt](../proof/phase-1/test-lat3.txt) | **Đạt** |
-| Quán Lát 4 (N4-01..N4-07): bếp nấu/chín/nhấc món, tương tác ưu tiên bếp trước bàn, phục vụ, boa `floor`, `paid`, uy tín boa, thanh toán khách đang ăn lúc `closing` | Rà `chonoi/sim/quan.py` (headless) | *(Chờ Người 4 ghép vào `TODO(Người 4)` trong `quan.py`)* | **Chưa đạt** (mới có ở `LiveQuanSim` cho live, chưa đưa vào `QuanSim` headless) |
+| Quán Lát 4 (N4-01..N4-07): bếp nấu/chín/nhấc món, tương tác ưu tiên bếp trước bàn, phục vụ, boa `floor`, `paid`, uy tín boa, thanh toán khách đang ăn lúc `closing` | `python tools/test_windows.py` (`test_quan_v11.py`: 11 tests vòng lặp bếp→phục vụ→tiền→đóng ca) | [test-quan-v11](../proof/phase-1/test-lat3.txt) | **Đạt** |
 | Cô lập phần sáng tạo live (`LiveGatherSim`, `LiveQuanSim`, `live_world.json`) khỏi headless & contract | `python tools/test_windows.py` (`test_diving.py`, `test_live_world.py`) | [test-lat3.txt](../proof/phase-1/test-lat3.txt) | **Đạt** |
 | Quy trình nhóm & hồ sơ: `TEAM.md`, `team_size`, đủ commit 4 người, `.agents/skills/` (≥ 2 skill) | `python tools/check_team.py` | *(Chưa đạt — `TEAM.md` chưa điền tên/GitHub handle 4 thành viên)* | **Chưa đạt** |
 
 ## Đánh giá ngắn
-- **Đã đạt:** Khung Test Contract headless, kiểm chứng liên thông kho 2 tiến trình, toàn bộ Lát 3 (`quan_orders.py`, `scenario.py`, nối `quan.py`) với **58/58 tests xanh**, và cô lập phần mở rộng live.
+- **Đã đạt:** Khung Test Contract headless, kiểm chứng liên thông kho 2 tiến trình, toàn bộ Lát 3 và Lát 4 (bếp B1–B2, bàn T1–T4, phục vụ, boa floor, closing) với toàn bộ test bộ quán xanh, và cô lập phần mở rộng live.
 - **Chưa đạt (cần chốt ngay trước tag `phase-1`):**
-  1. Người 4 ghép Lát 4 (bếp, bưng, phục vụ, tiền/boa, đóng ca cho khách đang ăn) vào `chonoi/sim/quan.py`.
-  2. Người 1–2 rà và chuẩn hóa payload sự kiện `chonoi/sim/gather.py` theo PRD-0 §E.
-  3. Cả nhóm điền đủ 4 thành viên thật vào `TEAM.md` + `team` trong `game.contract.json`, thêm ≥ 2 skill vào `.agents/skills/`, chạy lại kiểm chứng trên `main` rồi mới gắn tag `phase-1`.
+  1. Người 1–2 rà và chuẩn hóa payload sự kiện `chonoi/sim/gather.py` theo PRD-0 §E.
+  2. Cả nhóm điền đủ 4 thành viên thật vào `TEAM.md` + `team` trong `game.contract.json`, thêm ≥ 2 skill vào `.agents/skills/`, chạy lại kiểm chứng trên `main` rồi mới gắn tag `phase-1`.
 - **Điều cần chỉnh cho phase sau:** Luôn hoàn thiện lõi headless (P0) và khóa danh sách `TEAM.md` trước khi phát triển phần mở rộng đồ họa/live (P2).
