@@ -26,8 +26,29 @@
     }
   },
   "weather": {
-    "sun_ticks": 720,
-    "rain_ticks": 1800
+    "sun_ticks": 240,
+    "rain_ticks": 1800,
+    "duration_ticks": [
+      300,
+      420
+    ],
+    "weights": {
+      "sun": 3,
+      "rain": 3,
+      "snow": 2,
+      "fog": 2,
+      "wind": 2,
+      "bubbles": 2,
+      "fish_rain": 1,
+      "rainbow": 1
+    },
+    "snow_extra_oxygen": 1,
+    "sun_extra_refill": 3,
+    "bubble_interval": 90,
+    "bubble_oxygen": 120,
+    "bubble_radius": 2,
+    "fish_interval": 180,
+    "fish_cap": 48
   },
   "pursuer": {
     "label": "Chú Áo Vàng",
@@ -36,7 +57,8 @@
     "hit_radius": 1.6,
     "damage": 1,
     "invuln_ticks": 150,
-    "retreat_distance": 12
+    "retreat_distance": 12,
+    "hug_ticks": 72
   },
   "catalog": {
     "ca_linh": {

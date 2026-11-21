@@ -1,5 +1,6 @@
 import json
 import unittest
+from pathlib import Path
 from chonoi.contract import load_contract
 from chonoi.inputs import InputState
 from chonoi.live import LiveGame
@@ -20,8 +21,41 @@ class LiveWorldTest(unittest.TestCase):
         self.assertEqual(json.dumps(self.t, sort_keys=True), before)
         self.assertEqual(Session('gather', self.t, {}, 3).sim.t, self.t['gather'])
 
+    def test_weather_rotation_includes_every_kind_and_is_seeded(self):
+        a = LiveGame('gather', self.t, {}, 3).session.sim
+        b = LiveGame('gather', self.t, {}, 3).session.sim
+        seen = []
+        for _ in range(16):
+            for sim in (a, b):
+                sim.world_tick = sim.weather_end
+                sim._weather_step([])
+            self.assertEqual((a.weather, a.next_weather), (b.weather, b.next_weather))
+            self.assertNotEqual(a.weather, a.next_weather)
+            seen.append(a.weather)
+        self.assertEqual(set(seen[:8]), set(a.world['weather']['weights']))
+
+    def test_wind_reverses_movement_and_preserves_catch(self):
+        s = LiveGame('gather', self.t, {}, 3).session.sim
+        s.weather = 'wind'
+        s.weather_end = 99999
+        s.pos = [30, 5]
+        for _ in range(12):
+            s.step(InputState((-1, 0), {}, set()))
+        self.assertGreater(s.pos[0], 30)
+        s.fish = [{'id': 'F999', 'kind': 'ca_loc', 'pos': list(s.pos), 'heading_deg': 0}]
+        events = s.step(inp('catch'))
+        self.assertTrue(any(name == 'fish_caught' for name, _ in events))
+
+    def test_live_gather_hud_has_flower_icons_stack_counts_and_oxygen_warning(self):
+        html = (Path(__file__).resolve().parents[1] / 'chonoi' / 'web' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('function itemSprite', html)
+        self.assertIn('SẮP HẾT OXY', html)
+        self.assertIn('stack.count', html)
+        self.assertIn('hug_ticks_left', html)
+
     def test_rain_chase_contact_costs_one_hp_with_grace(self):
         s = LiveGame('gather', self.t, {}, 3).session.sim
+        s.next_weather = 'rain'
         s.world_tick = s.world['weather']['sun_ticks']
         s.pos = [30, 5]
         s.step(inp())
@@ -38,10 +72,23 @@ class LiveWorldTest(unittest.TestCase):
         s.step(inp())
         self.assertFalse(s.pursuer['active'])
 
+    def test_pursuer_hit_starts_a_visible_hug_scene(self):
+        s = LiveGame('gather', self.t, {}, 3).session.sim
+        s.next_weather = 'rain'
+        s.world_tick = s.world['weather']['sun_ticks']
+        s.pos = [30, 5]
+        s.step(inp())
+        s.pursuer['pos'] = list(s.pos)
+        s.step(inp())
+        self.assertGreater(s.pursuer['hug_ticks_left'], 0)
+        self.assertEqual(s.pursuer['hug_pos'], [30, 5])
+        self.assertGreater(s.snapshot()['pursuer']['hug_ticks_left'], 0)
+
     def test_final_hit_ends_and_file_inventory_filters_extras(self):
         s = LiveGame('gather', self.t, {}, 3).session.sim
         s.hold = ['ca_ro', 'ca_loc', 'tom_song']
         self.assertEqual(s.inventory_items(), {'ca_loc': 1})
+        s.next_weather = 'rain'
         s.world_tick = s.world['weather']['sun_ticks']
         s.pos = [30, 5]
         s.step(inp())

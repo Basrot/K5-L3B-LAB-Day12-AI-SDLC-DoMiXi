@@ -6,6 +6,7 @@ from .gather import GatherSim
 from ..ids import sort_by_id
 from ..live_world import load_world
 from ..inventory import KINDS_P1, hold_to_items
+from ..inputs import InputState
 
 
 class LiveGatherSim(GatherSim):
@@ -14,7 +15,12 @@ class LiveGatherSim(GatherSim):
         self.world = load_world()
         self.world_tick = 0
         self.weather = 'sun'
-        self.pursuer = {'active': False, 'pos': list(self.pos), 'label': self.world['pursuer']['label']}
+        self.weather_end = self.world['weather']['sun_ticks']
+        self._weather_bag = []
+        self.next_weather = self._draw_weather(self.weather)
+        self.bubbles = []
+        self.pursuer = {'active': False, 'pos': list(self.pos), 'label': self.world['pursuer']['label'],
+                        'hug_ticks_left': 0, 'hug_pos': list(self.pos)}
         self.extras = json.loads((Path(__file__).parent.parent / 'live_gather.json').read_text(encoding='utf-8'))
         self.collectibles = [dict(n, id=self.ids.new('L'), ready=True)
                              for n in self.extras['collectibles'] + self.world['collectibles']]
@@ -23,6 +29,13 @@ class LiveGatherSim(GatherSim):
 
     def step(self, inp):
         self.pickup_ticks = max(0, self.pickup_ticks - 1)
+        cfg = self.world['weather']
+        # Apply cold before base survival so oxygen-empty and choking keep their ordering.
+        if not self.done and self.weather == 'snow' and not self._at_surface():
+            self.oxygen_ticks = max(1, self.oxygen_ticks - cfg['snow_extra_oxygen']) if self.oxygen_ticks else 0
+        if self.weather == 'wind':
+            inp = InputState(tuple(-axis for axis in inp.move), inp.held,
+                             {name for name in ('interact', 'catch') if inp.pressed(name)})
         events = super().step(inp)
         if not self.done:
             self._weather_step(events)
@@ -41,19 +54,68 @@ class LiveGatherSim(GatherSim):
                 events.append(('treasure_picked', {'id': n['id'], 'kind': n['kind'], 'label': n['label']}))
         return events
 
+    def _draw_weather(self, current):
+        stream = self.rng.get('live_weather')
+        if not self._weather_bag:
+            self._weather_bag = list(self.world['weather']['weights'])
+            stream.shuffle(self._weather_bag)
+        candidates = [kind for kind in self._weather_bag if kind != current]
+        if not candidates:
+            self._weather_bag.clear()
+            return self._draw_weather(current)
+        selected = candidates[0]
+        self._weather_bag.remove(selected)
+        return selected
+
     def _weather_step(self, events):
         self.world_tick += 1
         w = self.world['weather']
-        phase = self.world_tick % (w['sun_ticks'] + w['rain_ticks'])
-        weather = 'sun' if phase < w['sun_ticks'] else 'rain'
-        if weather != self.weather:
-            events.append(('weather_changed', {'weather': weather}))
-        self.weather = weather
+        if self.world_tick >= self.weather_end:
+            self.weather = self.next_weather
+            stream = self.rng.get('live_weather')
+            self.weather_end = self.world_tick + stream.randint(*w['duration_ticks'])
+            self.next_weather = self._draw_weather(self.weather)
+            self.bubbles.clear()
+            events.append(('weather_changed', {'weather': self.weather}))
+        weather = self.weather
+        if weather == 'sun' and self._at_surface():
+            self.oxygen_ticks = min(self.oxygen_max, self.oxygen_ticks + w['sun_extra_refill'])
+        if weather == 'bubbles':
+            if self.world_tick % w['bubble_interval'] == 0:
+                stream = self.rng.get('live_bubbles')
+                self.bubbles.append({'pos': [max(0, min(self.t['bounds']['x'][1], self.pos[0]+stream.uniform(-6,6))),
+                                             min(self.t['bounds']['d'][1], self.pos[1]+8)]})
+            remaining = []
+            for bubble in self.bubbles:
+                bubble['pos'][1] -= 1 / 30
+                if not self._at_surface() and math.dist(self.pos, bubble['pos']) <= w['bubble_radius']:
+                    self.oxygen_ticks = min(self.oxygen_max, self.oxygen_ticks + w['bubble_oxygen'])
+                    events.append(('bubble_collected', {'oxygen_ticks': self.oxygen_ticks}))
+                elif bubble['pos'][1] > 0:
+                    remaining.append(bubble)
+            self.bubbles = remaining
+        if weather == 'fish_rain' and self.world_tick % w['fish_interval'] == 0 and len(self.fish) < w['fish_cap']:
+            stream = self.rng.get('live_fish_rain')
+            self.fish.append({'id': self.ids.new('F'), 'kind': stream.choice(list(self.world['gather']['fish_yield'])),
+                'pos': [max(4, min(self.t['bounds']['x'][1]-4,self.pos[0]+stream.uniform(-8,8))), 3.0],
+                'heading_deg': stream.choice([0,180])})
         cfg = self.world['pursuer']
+        enemy = self.pursuer
+        if enemy['hug_ticks_left'] > 0:
+            if weather != 'rain' or self._at_surface():
+                enemy['hug_ticks_left'] = 0
+                enemy['active'] = False
+                return
+            enemy['hug_ticks_left'] -= 1
+            enemy['hug_pos'] = list(self.pos)
+            enemy['pos'] = list(self.pos)
+            if enemy['hug_ticks_left'] == 0:
+                away = -1 if self.pos[0] > self.t['bounds']['x'][1] / 2 else 1
+                enemy['pos'] = [self.pos[0] + away * cfg['retreat_distance'], self.pos[1]]
+            return
         if weather != 'rain' or self._at_surface():
             self.pursuer['active'] = False
             return
-        enemy = self.pursuer
         if not enemy['active']:
             x = self.pos[0] + cfg['spawn_distance']
             if x > self.t['bounds']['x'][1]:
@@ -71,12 +133,13 @@ class LiveGatherSim(GatherSim):
             self.hp = max(0, self.hp - cfg['damage'])
             self.invuln_ticks = cfg['invuln_ticks']
             events.append(('pursuer_hit', {'hp': self.hp, 'damage': cfg['damage']}))
-            # Back the pursuer away, leaving the player control and an escape window.
-            away = -1 if self.pos[0] > self.t['bounds']['x'][1] / 2 else 1
-            enemy['pos'][0] = self.pos[0] + away * cfg['retreat_distance']
+            enemy['hug_ticks_left'] = cfg['hug_ticks']
+            enemy['hug_pos'] = list(self.pos)
+            enemy['pos'] = list(self.pos)
             if self.hp == 0:
+                lost = list(reversed(self.hold))
                 self.hold.clear()
-                events.append(('faint', {}))
+                events.append(('faint', {'cause': 'pursuer', 'lost': lost, 'hp': 0}))
                 self._finish('fainted', events)
 
     def inventory_items(self):
@@ -89,8 +152,9 @@ class LiveGatherSim(GatherSim):
                     collection_capacity=self.extras['capacity'], pickup_ticks=self.pickup_ticks,
                     pickup_radius=self.extras['pickup_radius'])
         w = self.world['weather']
-        phase = self.world_tick % (w['sun_ticks'] + w['rain_ticks'])
+
         snap.update(weather=self.weather, world_tick=self.world_tick,
-                    weather_ticks_left=w['sun_ticks']-phase if self.weather == 'sun' else w['sun_ticks']+w['rain_ticks']-phase,
+                    weather_ticks_left=max(0, self.weather_end-self.world_tick), next_weather=self.next_weather,
+                    bubbles=[{'pos':list(b['pos'])} for b in self.bubbles],
                     pursuer=dict(self.pursuer, pos=list(self.pursuer['pos'])), catalog=self.world['catalog'])
         return snap
