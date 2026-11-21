@@ -509,6 +509,8 @@ addEventListener("keyup", (e) => {
 addEventListener("blur", () => { down.clear(); pushInput(); });
 
 // ---------- ra: poll snapshot ----------
+// Giữ polling dày trên máy local; giảm request qua Internet để tránh nghẽn dịch vụ free.
+const STATE_POLL_MS = ['localhost', '127.0.0.1', '::1'].includes(location.hostname) ? 16 : 33;
 async function poll() {
   try {
     const r = await fetch("/state", { cache: "no-store" });
@@ -524,7 +526,7 @@ async function poll() {
       enterEvening();
     }
   } catch (e) { offline = true; }
-  setTimeout(poll, 16);
+  setTimeout(poll, STATE_POLL_MS);
 }
 poll();
 
