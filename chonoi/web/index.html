@@ -66,6 +66,7 @@ function walkPathToSeat(seatX, seatZ, isPainted) {
 }
 let audioContext = null, soundEnabled = false, lastSoundEvent = '';
 let chaseSource = null, chaseBuffer = null, chaseLoading = null, audioTouched = false;
+let jackSource = null, jackBuffer = null, jackLoading = null;
 function loadChaseMusic() {
   if (!chaseLoading) chaseLoading = fetch('/art/chieu-troi-mua.mp3')
     .then(response => { if (!response.ok) throw new Error('Không tải được nhạc'); return response.arrayBuffer(); })
@@ -73,6 +74,14 @@ function loadChaseMusic() {
     .then(buffer => { chaseBuffer = buffer; })
     .catch(() => { chaseLoading = null; soundButton.title = 'Không tải được bài nhạc; hãy khởi động lại server'; });
   return chaseLoading;
+}
+function loadJackMusic() {
+  if (!jackLoading) jackLoading = fetch('/art/thien-ly-oi.mp3')
+    .then(response => { if (!response.ok) throw new Error('Không tải được nhạc'); return response.arrayBuffer(); })
+    .then(data => audioContext.decodeAudioData(data))
+    .then(buffer => { jackBuffer = buffer; })
+    .catch(() => { jackLoading = null; });
+  return jackLoading;
 }
 let musicKey = '', musicTimer = null, musicVoices = [], musicStep = 0;
 const weatherTunes = {
@@ -91,11 +100,14 @@ function stopMusic() {
   musicVoices.forEach(voice => { try { voice.stop(); } catch (_) {} });
   musicVoices = [];
   if (chaseSource) { try { chaseSource.stop(); } catch (_) {} chaseSource.disconnect(); chaseSource = null; }
+  if (jackSource) { try { jackSource.stop(); } catch (_) {} jackSource.disconnect(); jackSource = null; }
 }
 function syncMusic() {
   const key = !soundEnabled || document.hidden || !snap || snap.finished || transitioning ? ''
     : snap.mode === 'gather' && snap.pursuer?.active ? 'chase'
-    : snap.mode === 'gather' ? snap.weather : 'quan';
+    : snap.mode === 'gather' ? snap.weather
+    : snap.mode === 'quan' && snap.jack?.active && snap.jack?.state === 'singing' ? 'jack'
+    : 'quan';
   if (key === musicKey) return;
   stopMusic(); musicKey = key; musicStep = 0;
   if (!key || !audioContext) return;
@@ -107,6 +119,14 @@ function syncMusic() {
     return;
   }
   if (key === 'chase') loadChaseMusic().then(() => { if (chaseBuffer && musicKey === 'chase') { musicKey = ''; syncMusic(); } });
+  if (key === 'jack' && jackBuffer) {
+    jackSource = audioContext.createBufferSource(); jackSource.buffer = jackBuffer; jackSource.loop = true;
+    const gain = audioContext.createGain(); gain.gain.value = .75;
+    jackSource.connect(gain); gain.connect(audioContext.destination);
+    jackSource.onended = () => gain.disconnect(); jackSource.start();
+    return;
+  }
+  if (key === 'jack') loadJackMusic().then(() => { if (jackBuffer && musicKey === 'jack') { musicKey = ''; syncMusic(); } });
   const melody = weatherTunes[key] || weatherTunes.sun;
   const beat = key === 'wind' || key === 'fish_rain' ? 180 : key === 'fog' ? 450 : 280;
   function note() {
@@ -137,6 +157,7 @@ async function setSound(enabled) {
   soundButton.setAttribute('aria-pressed', String(soundEnabled));
   if (soundEnabled) playCue('water');
   if (soundEnabled) loadChaseMusic();
+  if (soundEnabled) loadJackMusic();
   syncMusic();
 }
 soundButton.textContent = '🔊 Bật nhạc';
@@ -189,6 +210,7 @@ const foodArt = new Image(); foodArt.src = '/art/02-items-food.png';
 const dishesArt = new Image(); dishesArt.src = '/art/14-dishes.png';
 const khaBanhArt = new Image(); khaBanhArt.src = '/art/17-kha-banh.png';
 const congAnArt = new Image(); congAnArt.src = '/art/18-cong-an.png';
+const jackArt = new Image(); jackArt.src = '/art/19-jack.png';
 const dishCell={ca_loc_nuong_trui:0,goi_bong_sung:1,lau_ca_linh_dien_dien:2,canh_chua_ca_loc:2,ca_keo_nuong:0,lau_mam:2,tom_hap:3,ca_ro_chien:4,cua_hap:5,ca_bong_kho:6};
 function itemName(kind) { return snap.catalog?.[kind]?.label || KIND_NAME[kind] || kind; }
 function dishName(kind) { return snap.menu_labels?.[kind] || kind; }
@@ -811,18 +833,48 @@ function drawQuan(w, h) {
     pill(caTag, cx, cy - 1.25 * s + bob, { size: (chasing || escorting) ? 12 : 10.5, color: caColor, border: caColor });
   }
 
+  // Ca Sĩ Jack (tiến vào sân khấu bên trái, hát Thiên Lý Ơi, tăng tiền tip cho quán)
+  if (snap.jack && snap.jack.active) {
+    const jk = snap.jack;
+    const jx = sx(jk.pos[0]), jy = sy(jk.pos[1]);
+    const singing = jk.state === 'singing';
+    const leaving = jk.state === 'leaving';
+    const row = singing ? 1 : 0;
+    const col = singing ? (Math.floor(snap.tick / 8) % 4) : (Math.floor(snap.tick / 8) % 4);
+    const bob = singing ? Math.sin(snap.tick / 3) * 3.5 : Math.sin(snap.tick / 8) * 2;
+    sprite(jackArt, col, row, 4, 2, jx, jy + bob - 0.45 * s, 1.95 * s, jk.facing_left);
+    const jackTag = singing ? '🎤 Jack đang hát "Thiên Lý Ơi" (+Tip)' : (leaving ? 'Ca Sĩ Jack (chào tạm biệt)' : 'Ca Sĩ Jack (bước vào quán)');
+    const jackColor = singing ? '#38bdf8' : '#e0e7ff';
+    pill(jackTag, jx, jy - 1.25 * s + bob, { size: singing ? 12 : 10.5, color: jackColor, border: jackColor });
+    if (singing) {
+      // Nốt nhạc bay bổng quanh Jack
+      const notes = ['🎵', '🎶', '✨', '⭐'];
+      for (let i = 0; i < 3; i++) {
+        const angle = (snap.tick * 0.05 + i * 2.1);
+        const radius = (0.7 + 0.3 * Math.sin(snap.tick * 0.08 + i)) * s;
+        const nx = jx + Math.cos(angle) * radius;
+        const ny = jy - 0.7 * s + Math.sin(angle) * (radius * 0.6) - ((snap.tick * 0.6 + i * 20) % (s * 0.8));
+        ctx.fillStyle = '#bae6fd';
+        ctx.font = `${Math.max(11, Math.min(16, s * 0.55))}px system-ui`;
+        ctx.textAlign = 'center';
+        ctx.fillText(notes[(Math.floor(snap.tick / 30) + i) % notes.length], nx, ny);
+      }
+    }
+  }
+
   // Banner thông báo sự kiện đặc biệt
   const specialEv = (snap.events || []).slice().reverse().find(e =>
-    ['bao_ke_hit', 'police_alerted', 'kha_banh_arrested', 'police_friendly', 'kha_banh_left'].includes(e.name) && snap.tick - e.tick < 160
+    ['bao_ke_hit', 'police_alerted', 'kha_banh_arrested', 'police_friendly', 'kha_banh_left', 'jack_arrived', 'jack_sing_start', 'jack_fan_donation', 'jack_left'].includes(e.name) && snap.tick - e.tick < 160
   );
   if (specialEv) {
     const isDanger = ['bao_ke_hit', 'police_alerted'].includes(specialEv.name);
-    const isSuccess = specialEv.name === 'kha_banh_arrested';
-    ctx.fillStyle = isDanger ? 'rgba(211, 47, 47, .92)' : (isSuccess ? 'rgba(46, 125, 50, .95)' : 'rgba(30, 80, 100, .9)');
-    const boxW = Math.min(w - 20, 560);
+    const isSuccess = ['kha_banh_arrested', 'jack_fan_donation'].includes(specialEv.name);
+    const isJack = ['jack_arrived', 'jack_sing_start'].includes(specialEv.name);
+    ctx.fillStyle = isDanger ? 'rgba(211, 47, 47, .92)' : (isSuccess ? 'rgba(46, 125, 50, .95)' : (isJack ? 'rgba(2, 132, 199, .95)' : 'rgba(30, 80, 100, .9)'));
+    const boxW = Math.min(w - 20, 580);
     ctx.fillRect(w / 2 - boxW / 2, top + 5, boxW, 30);
-    const msg = specialEv.data?.quote || (specialEv.name === 'kha_banh_arrested' ? 'Đã bắt Khá Bảnh (+50k thưởng, +0.5 uy tín)!' : 'Sự kiện');
-    text((isDanger ? '⚠️ ' : (isSuccess ? '⭐ ' : '📢 ')) + msg, w / 2, top + 25, {
+    const msg = specialEv.data?.quote || specialEv.data?.song || 'Sự kiện';
+    text((isDanger ? '⚠️ ' : (isSuccess ? '⭐ ' : (isJack ? '🎤 ' : '📢 '))) + msg, w / 2, top + 25, {
       size: 13,
       align: 'center',
       color: '#fff'
