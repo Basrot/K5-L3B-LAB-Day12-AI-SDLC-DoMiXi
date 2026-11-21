@@ -25,12 +25,15 @@
   #campaign-ui[data-screen="intro"] .campaign-panel{width:auto;max-height:none;margin:14px;padding:8px 12px;background:rgba(22,30,34,.75)}
   #campaign-home{position:fixed;left:14px;top:14px;z-index:4;background:#7b4931}
   #campaign-home[hidden]{display:none}
+  #campaign-evening{position:fixed;right:14px;top:14px;z-index:4;background:#355b74}
+  #campaign-evening[hidden]{display:none}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <nav aria-label="Chọn cảnh"><button data-mode="gather">☀ Sông</button><button data-mode="quan">♨ Quán · đem giỏ vào</button><button data-mode="quan" data-demo="true">Quán mẫu</button><button id="sound-toggle" aria-pressed="false">🔇 Âm thanh</button></nav>
 <button id="campaign-home" type="button" hidden>⌂ Về sảnh</button>
+<button id="campaign-evening" type="button" hidden>🌙 Về quán buổi tối</button>
 <div id="campaign-ui" aria-live="polite"></div>
 <audio id="lobby-music" src="/audio/lobby.mp3" loop preload="auto"></audio>
 <script>
@@ -45,6 +48,7 @@ const ctx = cv.getContext("2d");
 let snap = null, offline = false, transitioning = false;
 const campaignUI = document.getElementById('campaign-ui');
 const campaignHome = document.getElementById('campaign-home');
+const campaignEvening = document.getElementById('campaign-evening');
 const lobbyMusic = document.getElementById('lobby-music');
 let introFrame = 0, shopItem = null, campaignViewKey = '', musicMuted = false, musicAttempted = false;
 const introImages = ['29-intro-father-teaches-text.png','30-intro-father-injured-text.png','31-intro-ut-sen-decides-text.png','32-intro-first-departure-text.png'];
@@ -65,6 +69,7 @@ function renderCampaignUI() {
   const c = snap?.campaign;
   document.querySelector('nav').style.display = c ? 'none' : '';
   campaignHome.hidden = !c || c.screen !== 'playing';
+  campaignEvening.hidden = !c || c.screen !== 'playing' || snap.mode !== 'gather' || snap.finished || transitioning;
   if (!c || c.screen === 'playing') { campaignUI.classList.remove('active'); syncLobbyMusic('playing'); return; }
   campaignUI.classList.add('active'); syncLobbyMusic(c.screen);
   campaignUI.dataset.screen=c.screen;
@@ -323,9 +328,9 @@ async function enterEvening() {
   (snap.hold || []).forEach(kind => counts.set(kind, (counts.get(kind) || 0) + 1));
   eveningTransition = {started: performance.now(), items: [...counts], switched: false};
   down.clear(); queue.length = 0;
-  await fetch('/input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({move:[0,0],interact:false,catch:false})});
-  await new Promise(resolve => setTimeout(resolve, 2200));
   try {
+    await fetch('/input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({move:[0,0],interact:false,catch:false})});
+    await new Promise(resolve => setTimeout(resolve, 2200));
     const response = await fetch(snap?.campaign?'/campaign':'/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(snap?.campaign?{action:'evening'}:{mode:'quan'})});
     if (!response.ok) throw new Error('Không mở được quán');
     eveningTransition.switched = true;
@@ -334,6 +339,7 @@ async function enterEvening() {
   } catch (e) { offline = true; }
   finally { eveningTransition = null; transitioning = false; lastSent = ''; }
 }
+campaignEvening.addEventListener('click', enterEvening);
 document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click',async()=>{
   if (transitioning) return;
   if (snap?.mode === 'gather' && button.dataset.mode === 'quan' && button.dataset.demo !== 'true') {
