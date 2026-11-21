@@ -534,7 +534,7 @@
     "duration_s": 360,
     "walk_area": {
       "z_min": 2.25,
-      "z_max": 6.6,
+      "z_max": 6.95,
       "x_min_bottom": 1.25,
       "x_min_top": 1.65,
       "x_max_bottom": 14.55,
@@ -544,7 +544,8 @@
       "actor_radius": 0.28
     },
     "obstacles": [
-      {"id": "kitchen_counter", "x": [0.8, 7.55], "z": [4.85, 10.0]},
+      {"id": "kitchen_counter", "x": [0.8, 7.45], "z": [4.85, 5.72]},
+      {"id": "back_curtain_basket", "x": [9.1, 11.4], "z": [6.45, 10.0]},
       {"id": "lotus_crates", "x": [0.8, 3.75], "z": [2.0, 3.55]},
       {"id": "table_T1", "x": [11.75, 14.5], "z": [6.05, 7.0]},
       {"id": "table_T2", "x": [11.95, 14.6], "z": [4.45, 5.4]},
@@ -601,7 +602,7 @@
         ],
         "interact_pos": [
           2.6,
-          4.75
+          6.6
         ]
       },
       {
@@ -613,7 +614,7 @@
         ],
         "interact_pos": [
           4.0,
-          4.75
+          6.6
         ]
       }
     ]

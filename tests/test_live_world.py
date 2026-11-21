@@ -336,11 +336,22 @@ class LiveWorldTest(unittest.TestCase):
             s.step(InputState((0, -1), {}, set()))
         self.assertGreaterEqual(s.pos[1], s.walk_area['z_min'])
 
-        # 2. Đi tới trước quầy bếp B1 -> không xuyên vào quầy bếp/bếp lò nhưng bấm E vẫn nấu được
+        # 2. Đâm thẳng vào mặt trước bàn quầy bếp -> bị chặn không xuyên quầy
         s.pos = [2.6, 4.2]
         for _ in range(60):
             s.step(InputState((0, 1), {}, set()))
         self.assertLessEqual(s.pos[1], 4.85 - r + 1e-6)
+
+        # 2b. Vòng sang bên phải quầy bếp (x=8.2) đi vào hành lang sau quầy tới tận bếp B1 -> bị chặn trước bếp lò và bấm E nấu được
+        s.pos = [8.2, 4.5]
+        for _ in range(50):
+            s.step(InputState((0, 1), {}, set()))
+        self.assertGreaterEqual(s.pos[1], 6.0)
+        for _ in range(110):
+            s.step(InputState((-1, 0), {}, set()))
+        self.assertLessEqual(s.pos[0], 3.0)
+        self.assertGreaterEqual(s.pos[1], 5.72 + r - 1e-6)
+        self.assertLessEqual(s.pos[1], s.walk_area['z_max'] - r + 1e-6)
         for _ in range(s.t['first_customer_tick']):
             s.step(inp())
         ev_cook = s.step(inp('interact'))
