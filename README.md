@@ -9,6 +9,16 @@
 - `tkinter` (đi kèm Python trên macOS/Windows; trên Linux nếu không có X11/DISPLAY thì `chonoi.bench` tự chuyển sang bộ đệm RGB 1280×720 dự phòng).
 - Hệ điều hành hỗ trợ: **macOS**, **Linux** và **Windows**.
 
+## Chơi qua Internet miễn phí (Render)
+
+Repo có sẵn `render.yaml` để triển khai game campaign thành Python Web Service trên Render Free:
+
+1. Mở [Render Blueprint](https://dashboard.render.com/blueprints) và đăng nhập bằng GitHub.
+2. Chọn **New Blueprint Instance**, cấp quyền cho repo `Basrot/K5-L3B-LAB-Day12-AI-SDLC-DoMiXi`, rồi tạo dịch vụ `quan-an-cho-noi-domixi`.
+3. Chờ deploy hoàn tất và chia sẻ URL `https://quan-an-cho-noi-domixi.onrender.com` (Render có thể thêm hậu tố nếu tên đã được dùng).
+
+> Dịch vụ Free tự ngủ sau 15 phút không có truy cập; lượt mở tiếp theo có thể mất khoảng một phút để khởi động. Tiến độ chiến dịch lưu trên ổ đĩa tạm của dịch vụ nên có thể mất khi Render khởi động lại hoặc deploy lại. Nền tảng này phù hợp demo/chơi thử.
+
 ## Chạy nhanh từ clone sạch (≤ 3 lệnh)
 
 ### macOS / Linux (3 lệnh)
