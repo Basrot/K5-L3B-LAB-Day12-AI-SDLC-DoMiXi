@@ -3,6 +3,7 @@ services:
     name: quan-an-cho-noi-domixi
     runtime: python
     plan: free
+    region: singapore
     buildCommand: python -m compileall -q chonoi
     startCommand: python -m chonoi.live --mode campaign --host 0.0.0.0 --port $PORT
     healthCheckPath: /
