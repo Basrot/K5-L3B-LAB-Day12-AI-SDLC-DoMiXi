@@ -216,12 +216,12 @@ class _Handler(BaseHTTPRequestHandler):
             allowed = {'01-ut-sen.png', '02-items-food.png', '03-props-npcs.png', '04-river-scene.png',
                        '05-restaurant-scene.png', '10-underwater-animation.png', '11-rain-pursuer.png',
                        '12-river-life.png', '13-dining-cast.png', '14-dishes.png', '15-quan-cho-noi.jpg',
-                       '16-seated-waiting.png', '17-kha-banh.png', '18-cong-an.png'}
+                       '16-seated-waiting.png', '17-kha-banh.png', '18-cong-an.png', 'chieu-troi-mua.mp3'}
             if name not in allowed:
                 self._send(404, b'{}')
                 return
             asset = os.path.join(os.path.dirname(WEB_DIR), '..', 'assets', 'art-pack', name)
-            ctype = 'image/jpeg' if name.endswith(('.jpg', '.jpeg')) else 'image/png'
+            ctype = 'audio/mpeg' if name.endswith('.mp3') else ('image/jpeg' if name.endswith(('.jpg', '.jpeg')) else 'image/png')
             try:
                 with open(asset, 'rb') as f:
                     self._send(200, f.read(), ctype)
