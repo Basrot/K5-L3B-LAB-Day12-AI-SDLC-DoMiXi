@@ -328,4 +328,43 @@ class LiveWorldTest(unittest.TestCase):
         self.assertTrue(any(e[0] == 'jack_left' for e in ev_leave))
         self.assertEqual(sim.jack['state'], 'leaving')
 
+    def test_live_quan_blocks_fence_stoves_and_tables_while_allowing_interact(self):
+        s = LiveGame('quan', self.t, {}, 3).session.sim
+        r = s.walk_area['actor_radius']
+        # 1. Đi xuống hết cỡ -> phải bị chặn lại bên trong hàng rào dưới (không bước ra sông)
+        for _ in range(180):
+            s.step(InputState((0, -1), {}, set()))
+        self.assertGreaterEqual(s.pos[1], s.walk_area['z_min'])
+
+        # 2. Đi tới trước quầy bếp B1 -> không xuyên vào quầy bếp/bếp lò nhưng bấm E vẫn nấu được
+        s.pos = [2.6, 4.2]
+        for _ in range(60):
+            s.step(InputState((0, 1), {}, set()))
+        self.assertLessEqual(s.pos[1], 4.85 - r + 1e-6)
+        for _ in range(s.t['first_customer_tick']):
+            s.step(inp())
+        ev_cook = s.step(inp('interact'))
+        self.assertTrue(any(name == 'cook_started' for name, _ in ev_cook))
+
+        # 3. Đi đâm thẳng sang phải vào bàn T2 -> dừng ngoài mép bàn, không đi xuyên bàn và không vượt rào phải
+        s.pos = [10.5, 4.9]
+        for _ in range(120):
+            s.step(InputState((1, 0), {}, set()))
+        self.assertLessEqual(s.pos[0], 11.95 - r + 1e-6)
+        t2 = next(t for t in s.tables if t['id'] == 'T2')
+        self.assertLessEqual(s._interact_dist(t2), s.t['interact_radius'])
+
+        # 4. NPC Khá Bảnh / Công An khi tuần tra không đi xuyên quầy bếp/bàn hoặc vượt rào
+        s.kha_banh.update(active=True, state='patrolling', pos=[8.2, 4.2], target=[2.0, 8.0], timer=300)
+        for _ in range(90):
+            s.step(inp())
+        self.assertIsNone(s._hits_obstacle(s.kha_banh['pos'][0], s.kha_banh['pos'][1], r - 0.02))
+        self.assertGreaterEqual(s.kha_banh['pos'][1], s.walk_area['z_min'])
+        self.assertLessEqual(s.kha_banh['pos'][1], s.walk_area['z_max'])
+
+        # 5. Lõi headless QuanSim tuyệt đối không bị ảnh hưởng bởi walk_area / obstacles của live
+        headless_q = Session('quan', self.t, {}, 3).sim
+        self.assertFalse(hasattr(headless_q, 'obstacles'))
+
+
 

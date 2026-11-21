@@ -235,8 +235,13 @@ function samplePath(pts, t) {
   return { pos: pts[pts.length - 1], dx: last ? last[1][0] - last[0][0] : 0 };
 }
 function walkPathToSeat(seatX, seatZ, isPainted) {
-  const gate = [7.75, 0.35], deck = [7.75, 2.5];
-  if (isPainted) return [gate, deck, [10.8, Math.max(3.2, seatZ - 0.6)], [seatX, seatZ]];
+  const gate = [7.75, 0.5], deck = [7.75, 2.55];
+  if (isPainted) {
+    // Đi dọc lối giữa, rẽ vào khe trống giữa các bàn rồi mới ngồi vào ghế — không xuyên qua bàn hoặc vượt rào
+    const laneZ = seatZ < 4.0 ? 2.55 : (seatZ < 5.5 ? 4.18 : 5.75);
+    const clampedX = Math.min(14.0, seatX);
+    return [gate, deck, [10.9, 2.55], [10.9, laneZ], [clampedX, laneZ], [clampedX, seatZ]];
+  }
   return [gate, deck, [seatX, seatZ]];
 }
 let audioContext = null, soundEnabled = false, lastSoundEvent = '';
@@ -1248,7 +1253,11 @@ function drawQuan(w, h) {
   const irQ = meta.interact_radius || 2.0;
   (snap.stoves || []).forEach((st) => {
     const bx = sx(st.pos[0]), by = sy(st.pos[1]);
-    const nearStove = pPosQ && Math.hypot(pPosQ[0] - st.pos[0], pPosQ[1] - st.pos[1]) <= irQ;
+    const stDist = pPosQ ? Math.min(
+      Math.hypot(pPosQ[0] - st.pos[0], pPosQ[1] - st.pos[1]),
+      st.interact_pos ? Math.hypot(pPosQ[0] - st.interact_pos[0], pPosQ[1] - st.interact_pos[1]) : Infinity
+    ) : Infinity;
+    const nearStove = stDist <= irQ;
     const col = st.state === "cooking" ? "#f59e0b" : st.state === "ready" ? "#4ade80" : "#cbd5e1";
     if (!hasBg || !st.painted) {
       const cell = st.state === 'cooking' ? 1 : st.state === 'ready' ? 2 : 0;

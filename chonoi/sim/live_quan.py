@@ -1,6 +1,7 @@
 """Playable restaurant extension, deliberately isolated from contract QuanSim."""
 import math
-from .quan import QuanSim
+from .quan import QuanSim, TICK
+from .ramp import ramp_velocity
 from ..ids import sort_by_id, id_key
 from ..live_world import load_world
 from ..inventory import hold_to_items
@@ -89,7 +90,7 @@ class LiveQuanSim(Reservations, QuanSim):
         # Ca Sĩ Jack (J97) configuration and state machine
         self.jack_cfg = self.world.get('jack', {
             'label': 'Ca Sĩ Jack (J97)', 'song_title': 'Thiên Lý Ơi', 'speed': 2.2,
-            'entrance_pos': [8.0, 0.5], 'stage_pos': [5.5, 5.2],
+            'entrance_pos': [8.0, 0.5], 'stage_pos': [5.6, 3.9],
             'first_spawn_s': 35, 'cooldown_s': 45, 'sing_duration_s': 26,
             'tip_bonus': 20, 'fan_donation': 40,
             'quote_arrive': 'Jack chào cả nhà quán Út Sen! Nay tặng quán bài Thiên Lý Ơi nha!',
@@ -100,12 +101,14 @@ class LiveQuanSim(Reservations, QuanSim):
             'active': False,
             'state': 'inactive',
             'pos': list(self.jack_cfg.get('entrance_pos', [8.0, 0.5])),
-            'target': list(self.jack_cfg.get('stage_pos', [5.5, 5.2])),
+            'target': list(self.jack_cfg.get('stage_pos', [5.6, 3.9])),
             'facing_left': True,
             'timer': int(round(self.jack_cfg.get('first_spawn_s', 35) * 60)),
             'action_ticks': 0,
             'fan_donated': False
         }
+        self.walk_area = dict(self.t.get('walk_area', {}))
+        self.obstacles = [dict(ob) for ob in self.t.get('obstacles', [])]
         self.invuln_ticks = 0
         self.reservations = make_reservations(self, self.menu)
         for reservation in self.reservations:
@@ -254,9 +257,9 @@ class LiveQuanSim(Reservations, QuanSim):
             if self._interact_police(events):
                 pass
             else:
-                targets = [(math.dist(self.pos, x['pos']), rank, x['id'], x)
+                targets = [(self._interact_dist(x), rank, x['id'], x)
                            for rank, group in enumerate((self.stoves, self.tables)) for x in group
-                           if math.dist(self.pos, x['pos']) <= self.t['interact_radius']]
+                           if self._interact_dist(x) <= self.t['interact_radius']]
                 if targets:
                     _, rank, _, target = min(targets, key=lambda v: v[:3])
                     self._interact(target, rank, events)
@@ -335,17 +338,25 @@ class LiveQuanSim(Reservations, QuanSim):
             if dist < 0.3:
                 kb['state'] = 'patrolling'
             else:
-                self._move_actor(kb, dx, dz, dist, self.kb_cfg['speed'])
+                self._move_actor(kb, dx, dz, dist, self.kb_cfg['speed'], allow_bridge=True)
 
         elif kb['state'] == 'patrolling':
             kb['timer'] -= 1
             if dist < 0.4:
-                bounds = self.kb_cfg.get('patrol_bounds', {'x': [3.0, 14.0], 'z': [2.0, 8.5]})
-                rand_x = bounds['x'][0] + ((self.elapsed * 17 + 23) % 100) / 100.0 * (bounds['x'][1] - bounds['x'][0])
-                rand_z = bounds['z'][0] + ((self.elapsed * 31 + 47) % 100) / 100.0 * (bounds['z'][1] - bounds['z'][0])
-                kb['target'] = [round(rand_x, 2), round(rand_z, 2)]
+                bounds = self.kb_cfg.get('patrol_bounds', {'x': [4.3, 11.2], 'z': [2.6, 6.1]})
+                bx0, bx1 = bounds['x']
+                bz0, bz1 = bounds['z']
+                r = float(self.walk_area.get('actor_radius', 0.28))
+                chosen = [8.5, 4.0]
+                for attempt in range(12):
+                    rx = bx0 + (((self.elapsed + attempt * 13) * 17 + 23) % 100) / 100.0 * (bx1 - bx0)
+                    rz = bz0 + (((self.elapsed + attempt * 19) * 31 + 47) % 100) / 100.0 * (bz1 - bz0)
+                    if not self._hits_obstacle(rx, rz, r + 0.05):
+                        chosen = [round(rx, 2), round(rz, 2)]
+                        break
+                kb['target'] = chosen
             else:
-                self._move_actor(kb, dx, dz, dist, self.kb_cfg['speed'])
+                self._move_actor(kb, dx, dz, dist, self.kb_cfg['speed'], allow_bridge=False)
 
             # Va chạm với người chơi: thu tiền và rời quán luôn
             if math.dist(self.pos, pos) <= self.kb_cfg['hit_radius'] and self.invuln_ticks == 0:
@@ -376,7 +387,7 @@ class LiveQuanSim(Reservations, QuanSim):
                 kb['timer'] = int(round(self.kb_cfg.get('spawn_cooldown_s', 15) * 60))
             else:
                 speed = self.kb_cfg['speed'] * 1.2
-                self._move_actor(kb, dx, dz, dist, speed)
+                self._move_actor(kb, dx, dz, dist, speed, allow_bridge=True)
 
         elif kb['state'] == 'arrested':
             # Bị công an lôi đi
@@ -410,11 +421,12 @@ class LiveQuanSim(Reservations, QuanSim):
             dz = ca['target'][1] - pos[1]
             dist = math.hypot(dx, dz)
             if dist < 0.4:
-                points = [[4.0, 5.0], [12.0, 5.0], [8.0, 3.5], [8.0, 6.0]]
+                points = [[5.5, 3.6], [10.8, 3.6], [10.6, 5.8], [8.2, 5.6]]
                 idx = (self.elapsed // 180) % len(points)
                 ca['target'] = points[idx]
             else:
-                self._move_actor(ca, dx, dz, dist, self.ca_cfg['speed'])
+                # Cho phép bước từ cầu gỗ vào sàn trong lúc vừa vào quán
+                self._move_actor(ca, dx, dz, dist, self.ca_cfg['speed'], allow_bridge=(pos[1] < 2.4))
 
             if ca['timer'] <= 0:
                 ca['state'] = 'leaving'
@@ -427,7 +439,7 @@ class LiveQuanSim(Reservations, QuanSim):
             dx = ca['target'][0] - pos[0]
             dz = ca['target'][1] - pos[1]
             dist = math.hypot(dx, dz)
-            self._move_actor(ca, dx, dz, dist, self.ca_cfg['chase_speed'])
+            self._move_actor(ca, dx, dz, dist, self.ca_cfg['chase_speed'], allow_bridge=(pos[1] < 2.4 or kb['pos'][1] < 2.4))
 
             if dist <= 1.2:
                 # Bắt giữ thành công!
@@ -449,8 +461,12 @@ class LiveQuanSim(Reservations, QuanSim):
             dx = ca['target'][0] - pos[0]
             dz = ca['target'][1] - pos[1]
             dist = math.hypot(dx, dz)
-            self._move_actor(ca, dx, dz, dist, self.ca_cfg['speed'] * 1.3)
-            self.kha_banh['pos'] = [pos[0] + (0.5 if not ca['facing_left'] else -0.5), pos[1]]
+            self._move_actor(ca, dx, dz, dist, self.ca_cfg['speed'] * 1.3, allow_bridge=True)
+            kb_x, kb_z = self._clamp_and_slide(
+                pos[0], pos[1], pos[0] + (0.45 if not ca['facing_left'] else -0.45), pos[1],
+                float(self.walk_area.get('actor_radius', 0.28)), allow_bridge=True
+            )
+            self.kha_banh['pos'] = [kb_x, kb_z]
             self.kha_banh['facing_left'] = ca['facing_left']
 
             if pos[1] <= 0.8 or dist < 0.4:
@@ -470,7 +486,7 @@ class LiveQuanSim(Reservations, QuanSim):
                 ca['state'] = 'inactive'
                 ca['timer'] = int(round(self.ca_cfg.get('patrol_cooldown_s', 25) * 60))
             else:
-                self._move_actor(ca, dx, dz, dist, self.ca_cfg['speed'])
+                self._move_actor(ca, dx, dz, dist, self.ca_cfg['speed'], allow_bridge=True)
 
     def _step_jack(self, events):
         jk = self.jack
@@ -509,7 +525,7 @@ class LiveQuanSim(Reservations, QuanSim):
                     'quote': self.jack_cfg.get('quote_singing', 'Thiên lý ơi, em có nghe chăng lời ru chiều nay... 🎵')
                 }))
             else:
-                self._move_actor(jk, dx, dz, dist, self.jack_cfg['speed'])
+                self._move_actor(jk, dx, dz, dist, self.jack_cfg['speed'], allow_bridge=True)
 
         elif jk['state'] == 'singing':
             jk['timer'] -= 1
@@ -543,14 +559,152 @@ class LiveQuanSim(Reservations, QuanSim):
                 jk['state'] = 'inactive'
                 jk['timer'] = int(round(self.jack_cfg.get('cooldown_s', 45) * 60))
             else:
-                self._move_actor(jk, dx, dz, dist, self.jack_cfg['speed'])
+                self._move_actor(jk, dx, dz, dist, self.jack_cfg['speed'], allow_bridge=True)
 
-    @staticmethod
-    def _move_actor(actor, dx, dz, dist, speed):
-        if dist > 0.001:
-            step_len = min(dist, speed / 60.0)
-            actor['pos'][0] += (dx / dist) * step_len
-            actor['pos'][1] += (dz / dist) * step_len
+    def _interact_dist(self, entity) -> float:
+        d = math.dist(self.pos, entity['pos'])
+        ip = entity.get('interact_pos')
+        if ip is not None:
+            d = min(d, math.dist(self.pos, ip))
+        return d
+
+    def _walk_x_bounds(self, z: float, r: float, allow_bridge: bool = False):
+        wa = self.walk_area
+        if not wa:
+            b = self.t['bounds']
+            return b['x'][0] + r, b['x'][1] - r
+        z_min = float(wa.get('z_min', 2.25))
+        z_max = float(wa.get('z_max', 6.6))
+        if allow_bridge and z < z_min:
+            bx0, bx1 = wa.get('bridge_x', [6.7, 8.8])
+            return float(bx0) + r, float(bx1) - r
+        t = 0.0 if z_max <= z_min else max(0.0, min(1.0, (z - z_min) / (z_max - z_min)))
+        x_lo = float(wa.get('x_min_bottom', 1.25)) + t * (float(wa.get('x_min_top', 1.65)) - float(wa.get('x_min_bottom', 1.25)))
+        x_hi = float(wa.get('x_max_bottom', 14.55)) + t * (float(wa.get('x_max_top', 13.85)) - float(wa.get('x_max_bottom', 14.55)))
+        return x_lo + r, x_hi - r
+
+    def _hits_obstacle(self, x: float, z: float, r: float):
+        for ob in self.obstacles:
+            x0, x1 = ob['x']
+            z0, z1 = ob['z']
+            if (x0 - r) < x < (x1 + r) and (z0 - r) < z < (z1 + r):
+                return ob
+        return None
+
+    def _clamp_fence(self, x: float, z: float, r: float, allow_bridge: bool = False):
+        wa = self.walk_area
+        if not wa:
+            b = self.t['bounds']
+            return max(b['x'][0], min(b['x'][1], x)), max(b['z'][0], min(b['z'][1], z))
+        z_min = float(wa.get('z_min', 2.25))
+        z_max = float(wa.get('z_max', 6.6))
+        bx0, bx1 = wa.get('bridge_x', [6.7, 8.8])
+        on_bridge_lane = allow_bridge and (float(bx0) <= x <= float(bx1))
+        lo_z = float(wa.get('bridge_z_min', 0.45)) if on_bridge_lane else (z_min + r)
+        hi_z = z_max - r
+        z = max(lo_z, min(hi_z, z))
+        x_lo, x_hi = self._walk_x_bounds(z, r, allow_bridge=allow_bridge)
+        x = max(x_lo, min(x_hi, x))
+        return x, z
+
+    def _clamp_and_slide(self, old_x: float, old_z: float, new_x: float, new_z: float, r: float, allow_bridge: bool = False):
+        # Nếu điểm bắt đầu đang lỡ nằm trong vật cản, đẩy ra theo cạnh gần nhất trước khi trượt
+        start_ob = self._hits_obstacle(old_x, old_z, r)
+        if start_ob is not None:
+            x0, x1 = start_ob['x']
+            z0, z1 = start_ob['z']
+            pushes = [
+                (abs(old_x - (x0 - r)), x0 - r, old_z),
+                (abs((x1 + r) - old_x), x1 + r, old_z),
+                (abs(old_z - (z0 - r)), old_x, z0 - r),
+                (abs((z1 + r) - old_z), old_x, z1 + r),
+            ]
+            pushes.sort(key=lambda item: item[0])
+            _, tx, tz = pushes[0]
+            return self._clamp_fence(tx, tz, r, allow_bridge=allow_bridge)
+        # 1. Trượt theo trục X trước
+        tx, tz = self._clamp_fence(new_x, old_z, r, allow_bridge=allow_bridge)
+        ob_x = self._hits_obstacle(tx, tz, r)
+        if ob_x is not None:
+            x0, x1 = ob_x['x']
+            if new_x > old_x:
+                tx = max(old_x, x0 - r) if old_x <= x0 - r else old_x
+            elif new_x < old_x:
+                tx = min(old_x, x1 + r) if old_x >= x1 + r else old_x
+            else:
+                tx = old_x
+        # 2. Trượt theo trục Z tiếp theo
+        tx, tz = self._clamp_fence(tx, new_z, r, allow_bridge=allow_bridge)
+        ob_z = self._hits_obstacle(tx, tz, r)
+        if ob_z is not None:
+            z0, z1 = ob_z['z']
+            if new_z > old_z:
+                tz = max(old_z, z0 - r) if old_z <= z0 - r else old_z
+            elif new_z < old_z:
+                tz = min(old_z, z1 + r) if old_z >= z1 + r else old_z
+            else:
+                tz = old_z
+        # 3. Bảo đảm nằm gọn trong rào và đẩy nhẹ ra ngoài nếu chạm góc vật cản
+        tx, tz = self._clamp_fence(tx, tz, r, allow_bridge=allow_bridge)
+        ob = self._hits_obstacle(tx, tz, r)
+        if ob is not None:
+            x0, x1 = ob['x']
+            z0, z1 = ob['z']
+            pushes = [
+                (abs(tx - (x0 - r)), x0 - r, tz),
+                (abs((x1 + r) - tx), x1 + r, tz),
+                (abs(tz - (z0 - r)), tx, z0 - r),
+                (abs((z1 + r) - tz), tx, z1 + r),
+            ]
+            pushes.sort(key=lambda item: item[0])
+            _, tx, tz = pushes[0]
+            tx, tz = self._clamp_fence(tx, tz, r, allow_bridge=allow_bridge)
+        return tx, tz
+
+    def _move(self, inp):
+        if not self.walk_area and not self.obstacles:
+            return super()._move(inp)
+        speed = self.t['walk_speed']
+        mx, mz = inp.move
+        self.vel = ramp_velocity(self, (mx * speed, mz * speed), int(self.t.get('ramp_max_ticks', 6)))
+        if abs(self.vel[0]) < 1e-9 and abs(self.vel[1]) < 1e-9:
+            return
+        old_x, old_z = self.pos[0], self.pos[1]
+        r = float(self.walk_area.get('actor_radius', 0.28))
+        nx, nz = self._clamp_and_slide(old_x, old_z, old_x + self.vel[0] / TICK, old_z + self.vel[1] / TICK, r, allow_bridge=False)
+        if abs(nx - old_x) < 1e-6 and abs(self.vel[0]) > 0:
+            self.vel[0] = 0.0
+        if abs(nz - old_z) < 1e-6 and abs(self.vel[1]) > 0:
+            self.vel[1] = 0.0
+        self.pos[0], self.pos[1] = nx, nz
+
+    def _move_actor(self, actor, dx, dz, dist, speed, allow_bridge=False):
+        if dist <= 0.001:
+            return
+        step_len = min(dist, speed / 60.0)
+        old_x, old_z = actor['pos'][0], actor['pos'][1]
+        r = float(self.walk_area.get('actor_radius', 0.28))
+        ux, uz = dx / dist, dz / dist
+        nx, nz = self._clamp_and_slide(old_x, old_z, old_x + ux * step_len, old_z + uz * step_len, r, allow_bridge=allow_bridge)
+        # Nếu vướng góc quầy bếp/bàn: tự trượt vòng sang hướng thoáng gần tâm sàn (8.4, 3.8)
+        moved = math.hypot(nx - old_x, nz - old_z)
+        if moved < step_len * 0.25 and (self.obstacles or self.walk_area):
+            cand = [(-uz, ux), (uz, -ux)]
+            best = (nx, nz)
+            best_score = -1e9
+            for sx, sz in cand:
+                cx, cz = self._clamp_and_slide(old_x, old_z, old_x + sx * step_len, old_z + sz * step_len, r, allow_bridge=allow_bridge)
+                cm = math.hypot(cx - old_x, cz - old_z)
+                if cm > moved + 1e-4:
+                    score = cm - 0.05 * math.hypot(cx - 8.4, cz - 3.8)
+                    if score > best_score:
+                        best_score = score
+                        best = (cx, cz)
+            nx, nz = best
+        actor['pos'][0], actor['pos'][1] = nx, nz
+        if abs(nx - old_x) > 1e-4:
+            actor['facing_left'] = (nx - old_x) < 0
+        else:
             actor['facing_left'] = dx < 0
 
     def _interact(self, target, rank, events):
@@ -607,8 +761,12 @@ class LiveQuanSim(Reservations, QuanSim):
         for table, source in zip(snap['tables'], self.tables):
             table['label'] = source['label']
             table['painted'] = bool(source.get('painted', False))
+            if 'interact_pos' in source:
+                table['interact_pos'] = list(source['interact_pos'])
         for stove, source in zip(snap['stoves'], self.stoves):
             stove['painted'] = bool(source.get('painted', False))
+            if 'interact_pos' in source:
+                stove['interact_pos'] = list(source['interact_pos'])
         snap.update(
             menu_labels=labels, catalog=self.world['catalog'], demo_stock=self.demo_stock,
             elapsed=self.elapsed,
