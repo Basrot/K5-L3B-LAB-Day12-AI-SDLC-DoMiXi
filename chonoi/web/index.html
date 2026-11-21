@@ -117,6 +117,8 @@ const diningArt = new Image(); diningArt.src = '/art/13-dining-cast.png';
 const seatedArt = new Image(); seatedArt.src = '/art/16-seated-waiting.png';
 const foodArt = new Image(); foodArt.src = '/art/02-items-food.png';
 const dishesArt = new Image(); dishesArt.src = '/art/14-dishes.png';
+const khaBanhArt = new Image(); khaBanhArt.src = '/art/17-kha-banh.png';
+const congAnArt = new Image(); congAnArt.src = '/art/18-cong-an.png';
 const dishCell={ca_loc_nuong_trui:0,goi_bong_sung:1,lau_ca_linh_dien_dien:2,canh_chua_ca_loc:2,ca_keo_nuong:0,lau_mam:2,tom_hap:3,ca_ro_chien:4,cua_hap:5,ca_bong_kho:6};
 function itemName(kind) { return snap.catalog?.[kind]?.label || KIND_NAME[kind] || kind; }
 function dishName(kind) { return snap.menu_labels?.[kind] || kind; }
@@ -698,12 +700,77 @@ function drawQuan(w, h) {
     });
     ctx.restore();
   });
+
+  // Khá Bảnh (đi vào, thu bảo kê xong rời quán, hoặc bị công an bắt)
+  if (snap.kha_banh && snap.kha_banh.active) {
+    const kb = snap.kha_banh;
+    const kx = sx(kb.pos[0]), ky = sy(kb.pos[1]);
+    const arrested = kb.state === 'arrested';
+    const action = kb.action_ticks > 0;
+    const leaving = kb.state === 'leaving';
+    const row = (arrested || action) ? 1 : 0;
+    const col = arrested ? 2 : (action ? (Math.floor(snap.tick / 6) % 4) : (Math.floor(snap.tick / 8) % 4));
+    const bob = action ? Math.sin(snap.tick / 3) * 5 : Math.sin(snap.tick / 8) * 2;
+    sprite(khaBanhArt, col, row, 4, 2, kx, ky + bob - 0.45 * s, 1.9 * s, kb.facing_left);
+    const tag = arrested ? '🚨 BẢNH BỊ BẮT!' : (action ? '💸 ĐÃ THU BẢO KÊ (rời quán)' : (leaving ? 'Khá Bảnh (rời quán)' : 'Khá Bảnh'));
+    const color = arrested ? '#ff1744' : (action ? '#ff9100' : '#fbc02d');
+    pill(tag, kx, ky - 1.25 * s + bob, { size: (arrested || action) ? 12 : 10.5, color, border: color });
+    if (action) {
+      ctx.fillStyle = '#ffeb3b';
+      ctx.font = `${Math.max(12, Math.min(18, s * 0.65))}px system-ui`;
+      ctx.textAlign = 'center';
+      const sparkX = kx + Math.sin(snap.tick / 4) * s * 0.7;
+      const sparkY = ky - s * 0.5 + Math.cos(snap.tick / 4) * s * 0.4;
+      ctx.fillText('💸 -50k', sparkX, sparkY);
+    }
+  }
+
+  // Chú Công An tuần tra & bảo vệ quán
+  if (snap.cong_an && snap.cong_an.active) {
+    const ca = snap.cong_an;
+    const cx = sx(ca.pos[0]), cy = sy(ca.pos[1]);
+    const chasing = ca.state === 'chasing';
+    const escorting = ca.state === 'escorting';
+    const row = (chasing || escorting) ? 1 : 0;
+    const col = chasing ? 3 : (escorting ? 2 : (Math.floor(snap.tick / 8) % 4));
+    const bob = chasing ? Math.sin(snap.tick / 2) * 5 : Math.sin(snap.tick / 8) * 2;
+    sprite(congAnArt, col, row, 4, 2, cx, cy + bob - 0.45 * s, 1.9 * s, ca.facing_left);
+    const caTag = chasing ? '🚨 ĐANG BẮT KHÁ BẢNH!' : (escorting ? '👮‍♂️ DẪN GIẢI VỀ ĐỒN' : '👮‍♂️ Chú Công An (E báo tin)');
+    const caColor = chasing ? '#ff1744' : (escorting ? '#00e676' : '#69f0ae');
+    pill(caTag, cx, cy - 1.25 * s + bob, { size: (chasing || escorting) ? 12 : 10.5, color: caColor, border: caColor });
+  }
+
+  // Banner thông báo sự kiện đặc biệt
+  const specialEv = (snap.events || []).slice().reverse().find(e =>
+    ['bao_ke_hit', 'police_alerted', 'kha_banh_arrested', 'police_friendly', 'kha_banh_left'].includes(e.name) && snap.tick - e.tick < 160
+  );
+  if (specialEv) {
+    const isDanger = ['bao_ke_hit', 'police_alerted'].includes(specialEv.name);
+    const isSuccess = specialEv.name === 'kha_banh_arrested';
+    ctx.fillStyle = isDanger ? 'rgba(211, 47, 47, .92)' : (isSuccess ? 'rgba(46, 125, 50, .95)' : 'rgba(30, 80, 100, .9)');
+    const boxW = Math.min(w - 20, 560);
+    ctx.fillRect(w / 2 - boxW / 2, top + 5, boxW, 30);
+    const msg = specialEv.data?.quote || (specialEv.name === 'kha_banh_arrested' ? 'Đã bắt Khá Bảnh (+50k thưởng, +0.5 uy tín)!' : 'Sự kiện');
+    text((isDanger ? '⚠️ ' : (isSuccess ? '⭐ ' : '📢 ')) + msg, w / 2, top + 25, {
+      size: 13,
+      align: 'center',
+      color: '#fff'
+    });
+  }
+
   // người chơi (phục vụ di chuyển trên sàn gỗ quán)
   const p = snap.player;
   if (p) {
     const px = sx(p.pos[0]), py = sy(p.pos[1]);
     const vel = p.vel || [0, 0];
     const flipP = vel[0] < -0.05;
+    if (snap.invuln_ticks > 0 && Math.floor(snap.tick / 4) % 2 === 0) {
+      ctx.strokeStyle = "rgba(255, 82, 82, .85)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(px, py - 0.42 * s, 0.95 * s, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     if (meta.interact_radius) {
       ctx.strokeStyle = "rgba(255, 240, 185, 0.55)";
       ctx.lineWidth = 1.5;

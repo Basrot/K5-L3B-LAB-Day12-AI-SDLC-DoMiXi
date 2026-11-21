@@ -216,7 +216,7 @@ class _Handler(BaseHTTPRequestHandler):
             allowed = {'01-ut-sen.png', '02-items-food.png', '03-props-npcs.png', '04-river-scene.png',
                        '05-restaurant-scene.png', '10-underwater-animation.png', '11-rain-pursuer.png',
                        '12-river-life.png', '13-dining-cast.png', '14-dishes.png', '15-quan-cho-noi.jpg',
-                       '16-seated-waiting.png'}
+                       '16-seated-waiting.png', '17-kha-banh.png', '18-cong-an.png'}
             if name not in allowed:
                 self._send(404, b'{}')
                 return

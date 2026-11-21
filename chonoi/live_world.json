@@ -60,6 +60,29 @@
     "retreat_distance": 12,
     "hug_ticks": 72
   },
+  "kha_banh": {
+    "label": "Khá Bảnh",
+    "speed": 2.2,
+    "hit_radius": 1.4,
+    "tax_amount": 50,
+    "invuln_ticks": 180,
+    "quote": "Bảnh xin nhẹ 50k bảo kê rồi lượn nhé!",
+    "entrance_pos": [8.0, 0.5],
+    "spawn_cooldown_s": 15,
+    "roam_duration_s": 20,
+    "patrol_bounds": {"x": [3.0, 14.0], "z": [2.0, 8.5]}
+  },
+  "cong_an": {
+    "label": "Chú Công An",
+    "speed": 2.0,
+    "chase_speed": 4.2,
+    "interact_radius": 1.6,
+    "entrance_pos": [8.0, 0.5],
+    "patrol_cooldown_s": 25,
+    "patrol_duration_s": 15,
+    "reward_money": 50,
+    "reward_reputation": 0.5
+  },
   "catalog": {
     "ca_linh": {
       "label": "Cá linh",

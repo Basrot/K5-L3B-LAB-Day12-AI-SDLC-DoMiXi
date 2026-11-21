@@ -13,6 +13,8 @@ Ngày tạo: 2026-11-21. Công cụ: built-in image_gen. Khuôn mặt tham chi�
 - [07-title-day-cycle](07-title-day-cycle.png): Cảnh hoặc bố cục giao diện.
 - [08-results-settings](08-results-settings.png): Cảnh hoặc bố cục giao diện.
 - [09-animation-fx](09-animation-fx.png): Bảng nhân vật/vật phẩm/hiệu ứng.
+- [17-kha-banh](17-kha-banh.png): Bảng sprite 4x2 nhân vật Khá Bảnh (tuần tra, múa quạt chả và đòi tiền bảo kê).
+- [18-cong-an](18-cong-an.png): Bảng sprite 4x2 nhân vật Chú Công An (tuần tra, chào hỏi, tuýt còi, rượt bắt và dẫn giải đối tượng bảo kê).
 
 ## Sử dụng
 
