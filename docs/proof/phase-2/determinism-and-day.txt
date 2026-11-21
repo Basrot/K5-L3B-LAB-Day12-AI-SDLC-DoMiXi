@@ -1,0 +1,7 @@
+# Phase 2 Determinism & Full-Day Performance Proof (Contract v1.1)
+mode=gather bytes=73821 byte_identical=True elapsed_s=0.483
+  end={"type":"end","ticks":400,"sim_tick":400,"mode":"gather","state":"playing","reason":"tick_limit","money":0,"earned":0,"reputation":3.0,"score":300}
+mode=quan bytes=27202 byte_identical=True elapsed_s=0.332
+  end={"type":"end","ticks":400,"sim_tick":400,"mode":"quan","state":"playing","reason":"tick_limit","money":0,"earned":0,"reputation":3.0,"score":300}
+mode=day bytes=37951 byte_identical=True elapsed_s=1.057
+  end={"type":"end","ticks":22200,"sim_tick":22200,"mode":"day","state":"finished","reason":"days_complete","money":0,"earned":0,"reputation":3.0,"score":300,"days_completed":1}

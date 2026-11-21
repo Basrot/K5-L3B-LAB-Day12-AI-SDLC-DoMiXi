@@ -55,6 +55,27 @@ class LiveQuanSim(Reservations, QuanSim):
             'timer': int(round(self.ca_cfg.get('patrol_cooldown_s', 25) * 60)),
             'action_ticks': 0
         }
+
+        # Ca Sĩ Jack (J97) configuration and state machine
+        self.jack_cfg = self.world.get('jack', {
+            'label': 'Ca Sĩ Jack (J97)', 'song_title': 'Thiên Lý Ơi', 'speed': 2.2,
+            'entrance_pos': [8.0, 0.5], 'stage_pos': [5.5, 5.2],
+            'first_spawn_s': 35, 'cooldown_s': 45, 'sing_duration_s': 26,
+            'tip_bonus': 20, 'fan_donation': 40,
+            'quote_arrive': 'Jack chào cả nhà quán Út Sen! Nay tặng quán bài Thiên Lý Ơi nha!',
+            'quote_singing': 'Thiên lý ơi, em có nghe chăng lời ru chiều nay... 🎵',
+            'quote_leave': 'Cảm ơn quý khán giả quán Út Sen rất nhiều! Hẹn gặp lại nhé!'
+        })
+        self.jack = {
+            'active': False,
+            'state': 'inactive',
+            'pos': list(self.jack_cfg.get('entrance_pos', [8.0, 0.5])),
+            'target': list(self.jack_cfg.get('stage_pos', [5.5, 5.2])),
+            'facing_left': True,
+            'timer': int(round(self.jack_cfg.get('first_spawn_s', 35) * 60)),
+            'action_ticks': 0,
+            'fan_donated': False
+        }
         self.invuln_ticks = 0
         self.reservations = make_reservations(self, self.menu)
         for reservation in self.reservations:
@@ -136,9 +157,10 @@ class LiveQuanSim(Reservations, QuanSim):
         self._step_reservations(events)
         self.invuln_ticks = max(0, self.invuln_ticks - 1)
 
-        # Xử lý hành vi Khá Bảnh & Chú Công An
+        # Xử lý hành vi Khá Bảnh & Chú Công An & Ca Sĩ Jack
         self._step_kha_banh(events)
         self._step_cong_an(events)
+        self._step_jack(events)
 
         for st in self.stoves:
             if st['state'] == 'cooking':
@@ -162,15 +184,22 @@ class LiveQuanSim(Reservations, QuanSim):
                 c['eat_ticks_left'] -= 1
                 if c['eat_ticks_left'] <= 0:
                     price = c.get('base_price', self.menu[c['dish_id']]['price'])
-                    amount = price + c.get('tip', 0)
+                    base_tip = c.get('tip', 0)
+                    jack_bonus = self.jack_cfg.get('tip_bonus', 20) if (self.jack['active'] and self.jack['state'] == 'singing') else 0
+                    amount = price + base_tip + jack_bonus
                     self.money += amount
                     self.earned += amount
                     self.shift_earned += amount
-                    self.reputation = min(self.t['reputation_max'], self.reputation + (self.t['tip_reputation'] if c.get('tip', 0) else 0))
+                    self.reputation = min(self.t['reputation_max'], self.reputation + (self.t['tip_reputation'] if base_tip else 0))
                     self.customers.remove(c)
-                    events.append(('paid', {'customer_id': c['id'], 'dish_id': c['dish_id'], 'amount': amount}))
+                    ev_data = {'customer_id': c['id'], 'dish_id': c['dish_id'], 'amount': amount}
+                    if jack_bonus:
+                        ev_data['jack_bonus'] = jack_bonus
+                    events.append(('paid', ev_data))
             else:
-                c['patience_ticks_left'] = max(0, c['patience_ticks_left'] - 1)
+                # Khi Jack đang hát, khách say sưa nghe nhạc nên kiên nhẫn giảm chậm hơn 50%
+                if not (self.jack['active'] and self.jack['state'] == 'singing' and self.elapsed % 2 == 0):
+                    c['patience_ticks_left'] = max(0, c['patience_ticks_left'] - 1)
                 if c['patience_ticks_left'] == 0:
                     if c.get('reservation_id'):
                         reservation = next(r for r in self.reservations if r['id'] == c['reservation_id'])
@@ -410,6 +439,79 @@ class LiveQuanSim(Reservations, QuanSim):
             else:
                 self._move_actor(ca, dx, dz, dist, self.ca_cfg['speed'])
 
+    def _step_jack(self, events):
+        jk = self.jack
+        if jk['action_ticks'] > 0:
+            jk['action_ticks'] -= 1
+
+        ent = self.jack_cfg.get('entrance_pos', [8.0, 0.5])
+        stage = self.jack_cfg.get('stage_pos', [5.5, 5.2])
+
+        if jk['state'] == 'inactive':
+            jk['timer'] -= 1
+            if jk['timer'] <= 0:
+                jk['active'] = True
+                jk['state'] = 'entering'
+                jk['pos'] = list(ent)
+                jk['target'] = list(stage)
+                jk['fan_donated'] = False
+                events.append(('jack_arrived', {
+                    'label': self.jack_cfg.get('label', 'Ca Sĩ Jack (J97)'),
+                    'quote': self.jack_cfg.get('quote_arrive', 'Jack chào cả nhà quán Út Sen! Nay tặng quán bài Thiên Lý Ơi nha!')
+                }))
+            return
+
+        pos = jk['pos']
+        target = jk['target']
+        dx = target[0] - pos[0]
+        dz = target[1] - pos[1]
+        dist = math.hypot(dx, dz)
+
+        if jk['state'] == 'entering':
+            if dist < 0.3:
+                jk['state'] = 'singing'
+                jk['timer'] = int(round(self.jack_cfg.get('sing_duration_s', 26) * 60))
+                events.append(('jack_sing_start', {
+                    'song': self.jack_cfg.get('song_title', 'Thiên Lý Ơi'),
+                    'quote': self.jack_cfg.get('quote_singing', 'Thiên lý ơi, em có nghe chăng lời ru chiều nay... 🎵')
+                }))
+            else:
+                self._move_actor(jk, dx, dz, dist, self.jack_cfg['speed'])
+
+        elif jk['state'] == 'singing':
+            jk['timer'] -= 1
+            # Hiệu ứng nhịp biểu diễn đổi hướng nhẹ nhàng
+            jk['facing_left'] = (self.elapsed // 120) % 2 == 0
+
+            # Điểm giữa bài hát: khán giả cổ vũ tặng tiền trực tiếp cho quán
+            half_dur = int(round(self.jack_cfg.get('sing_duration_s', 26) * 30))
+            if jk['timer'] <= half_dur and not jk.get('fan_donated'):
+                donation = self.jack_cfg.get('fan_donation', 40)
+                self.money += donation
+                self.earned += donation
+                self.shift_earned += donation
+                self.reputation = min(self.t['reputation_max'], self.reputation + 0.2)
+                jk['fan_donated'] = True
+                events.append(('jack_fan_donation', {
+                    'amount': donation,
+                    'quote': 'Khán giả say sưa nghe Thiên Lý Ơi tặng thêm 40k cho quán!'
+                }))
+
+            if jk['timer'] <= 0:
+                jk['state'] = 'leaving'
+                jk['target'] = list(ent)
+                events.append(('jack_left', {
+                    'quote': self.jack_cfg.get('quote_leave', 'Cảm ơn quý khán giả quán Út Sen rất nhiều! Hẹn gặp lại nhé!')
+                }))
+
+        elif jk['state'] == 'leaving':
+            if pos[1] <= 0.8 or dist < 0.4:
+                jk['active'] = False
+                jk['state'] = 'inactive'
+                jk['timer'] = int(round(self.jack_cfg.get('cooldown_s', 45) * 60))
+            else:
+                self._move_actor(jk, dx, dz, dist, self.jack_cfg['speed'])
+
     @staticmethod
     def _move_actor(actor, dx, dz, dist, speed):
         if dist > 0.001:
@@ -472,6 +574,7 @@ class LiveQuanSim(Reservations, QuanSim):
             elapsed=self.elapsed,
             kha_banh=dict(self.kha_banh),
             cong_an=dict(self.cong_an),
+            jack=dict(self.jack),
             invuln_ticks=self.invuln_ticks
         )
         return snap

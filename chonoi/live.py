@@ -148,6 +148,7 @@ class LiveGame:
                     'screen': self.screen, 'day': self.day, 'wallet': self.wallet,
                     'reputation': self.reputation, 'stars': self.stars, 'result': self.result,
                     'intro_seen': self.intro_seen, 'upgrades': self.upgrades,
+                    'can_resume': self.return_screen is not None,
                     'upgrade_catalog': self.progression['upgrades'],
                     'equipped': self.equipped,
                     'day_count': len(self.contract['tuning']['day_plan']),
@@ -258,6 +259,8 @@ class CampaignLiveGame(LiveGame):
         self.result = None
         self.paid_by_dish = {}
         self.day_stock = None
+        self.return_screen = None
+        self.intro_return = None
         self.save_path = Path(__file__).resolve().parent.parent / '.chonoi-save.json'
         self._load_progress()
         self.equipped = dict(self.upgrades)
@@ -339,10 +342,23 @@ class CampaignLiveGame(LiveGame):
         action = body.get('action')
         with self._lock:
             if action == 'start' and self.screen == 'title':
+                self.intro_return = 'equipment'
+                self.screen = 'intro'
+            elif action == 'title' and self.screen != 'title':
+                if self.return_screen is None or self.screen == 'playing':
+                    self.return_screen = self.screen
+                self.screen = 'title'
+                self.inputs = LiveInputs()
+            elif action == 'resume' and self.screen == 'title' and self.return_screen is not None:
+                self.screen = self.return_screen
+                self.return_screen = None
+            elif action == 'replay_intro' and self.screen in ('title', 'map'):
+                self.intro_return = self.screen
                 self.screen = 'intro'
             elif action == 'intro_done' and self.screen == 'intro':
                 self.intro_seen = True
-                self.screen = 'equipment'
+                self.screen = self.intro_return or 'map'
+                self.intro_return = None
                 self._save_progress()
             elif action == 'select_day' and self.screen in ('map', 'shop', 'results'):
                 day = body.get('day')
@@ -351,6 +367,7 @@ class CampaignLiveGame(LiveGame):
                 if day > 1 and self.stars.get(str(day - 1), 0) < 1:
                     raise ValueError('Cần ít nhất 1 sao ở màn trước')
                 self.day = day
+                self.return_screen = None
                 self.result = None
                 self.paid_by_dish = {}
                 self.screen = 'equipment'
@@ -437,7 +454,7 @@ class _Handler(BaseHTTPRequestHandler):
                        '27-level-results.png', '29-intro-father-teaches-text.png',
                        '30-intro-father-injured-text.png', '31-intro-ut-sen-decides-text.png',
                        '32-intro-first-departure-text.png', '17-kha-banh.png', '18-cong-an.png',
-                       'chieu-troi-mua.mp3'}
+                       '19-jack.png', 'chieu-troi-mua.mp3', 'thien-ly-oi.mp3', 'thiên lý ơi.mp3'}
             if name not in allowed:
                 self._send(404, b'{}')
                 return
@@ -556,7 +573,7 @@ def main(argv=None) -> int:
         sys.stderr.write(f"không mở được cổng {a.port}: {e}\n")
         return 1
     server.start()
-    print(f"Mở trình duyệt tại {server.url}  (chế độ {a.mode}, seed {a.seed}). Ctrl+C để dừng.", flush=True)
+    print(f"Open {server.url} (mode {a.mode}, seed {a.seed}). Ctrl+C to stop.", flush=True)
     try:
         while True:
             time.sleep(0.5)

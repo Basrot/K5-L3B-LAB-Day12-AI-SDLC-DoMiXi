@@ -117,8 +117,6 @@ class LiveGatherSim(GatherSim):
                         break
         if not self.done:
             self._weather_step(events)
-        if not self.done:
-            self._swim_fish()
         if self.done or self._at_surface() or not inp.pressed('interact'):
             return events
         targets = [n for n in sort_by_id(self.collectibles) if n['ready']
