@@ -155,7 +155,7 @@ test_soak_10_days_completes_without_crash_and_is_deterministic (test_v13_bench_s
 test_ui_has_three_clear_warnings_and_high_contrast_mode (test_v13_bench_soak.TestContractV13.test_ui_has_three_clear_warnings_and_high_contrast_mode) ... ok
 
 ----------------------------------------------------------------------
-Ran 111 tests in 62.606s
+Ran 111 tests in 54.853s
 
 OK
 

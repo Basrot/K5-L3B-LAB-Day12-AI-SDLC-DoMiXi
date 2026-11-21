@@ -17,7 +17,7 @@ git clone https://github.com/Basrot/K5-L3B-LAB-Day12-AI-SDLC-DoMiXi.git
 cd K5-L3B-LAB-Day12-AI-SDLC-DoMiXi
 python3 -m chonoi.live --mode campaign
 ```
-*(Trình duyệt tự mở bản có giao diện tại `http://127.0.0.1:8080/` — hoặc mở thủ công địa chỉ in ra trên terminal. Có thể đổi cổng bằng `--port 8090`.)*
+*(Mở địa chỉ in ra trên terminal — mặc định `http://127.0.0.1:8000/`. Có thể đổi cổng bằng `--port 8080`.)*
 
 ### Windows (PowerShell — 3 lệnh)
 ```powershell
