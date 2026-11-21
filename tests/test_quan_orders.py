@@ -95,8 +95,11 @@ class QuanCustomerSpawnAndReservation(unittest.TestCase):
         """Không còn bàn trống thì bỏ lượt, không phát `no_dish` dù kho trống."""
         first = self.t["quan"]["first_customer_tick"]
         sc = {
-            "stock": {"ca_loc": 1},
-            "customers": [{"id": "C1", "table_id": "T1", "dish_id": "ca_loc_nuong_trui"}],
+            "stock": {},
+            "customers": [
+                {"id": f"C{i + 1}", "table_id": tb["id"], "dish_id": "ca_loc_nuong_trui", "order_status": "unfulfillable"}
+                for i, tb in enumerate(self.t["quan"]["tables"])
+            ],
         }
         s = Session("quan", self.t, sc, 1)
         for _ in range(first):

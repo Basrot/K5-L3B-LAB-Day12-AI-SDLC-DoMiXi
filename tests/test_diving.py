@@ -22,7 +22,7 @@ class DivingTest(unittest.TestCase):
         self.assertEqual(s.sim.oxygen_ticks, 9 + self.t['gather']['oxygen_refill_per_tick'])
 
     def test_catch_underwater_and_cooldown(self):
-        s = Session('gather', self.t, {'player': {'pos': [15, 5]}}, 1)
+        s = Session('gather', self.t, {'player': {'pos': [15, 5]}, 'fish': [{'id': 'F1', 'kind': 'ca_linh', 'pos': [15, 5]}]}, 1)
         rows = s.step(inp('catch'))
         self.assertIn('fish_caught', [e['name'] for e in rows])
         self.assertEqual(s.sim.hold, ['ca_linh'] * self.t['gather']['fish_yield']['ca_linh'])

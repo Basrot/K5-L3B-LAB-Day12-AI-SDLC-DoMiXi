@@ -1,18 +1,15 @@
-"""Lát 3 (Người 3) — Khách, đơn hàng, giữ chỗ nguyên liệu, kiên nhẫn và kiểm mâu thuẫn mức luật cho `quan`.
+"""Nghiệp vụ đơn hàng, khách, giữ chỗ nguyên liệu, kế hoạch ngày và kiểm mâu thuẫn mức luật cho `quan` (Contract v1.1).
 
-Tách riêng khỏi `chonoi/sim/quan.py` để Người 3 và Người 4 làm song song không xung đột.
-Giao diện cho Người 4 (Lát 4 — bếp, bưng, phục vụ, tiền):
-  - `oldest_reserved_order(customers)` -> khách `reserved` cũ nhất theo `(order_tick, id_key(table_id))`
-  - `consume_order_for_cooking(stock, customer, menu)` -> `(items_sorted, base_price)`, tiêu tồn & chuyển `assigned`
-  - `release_customer_links(customer, stoves, hand)` -> nhả giữ chỗ & dọn món trên bếp/tay khi khách rời
-  - `clamp_reputation(value, t_quan)` -> kẹp uy tín vào `[reputation_min, reputation_max]` không trôi float
+Hỗ trợ cả chế độ `--mode quan` độc lập (đủ 6 món) lẫn `--mode day` (lọc món theo `day_plan` của Ngày hiện tại,
+cấm `quan.stock`/`quan.reputation` trong scenario và kiểm món/bếp/tay khớp kế hoạch ngày).
 """
 
+from decimal import Decimal, ROUND_FLOOR
 import math
 
 from ..errors import BadInput
 from ..ids import id_key, sort_by_id
-from ..inventory import KINDS_P1, validate_items
+from ..inventory import KINDS_V11, validate_items
 
 TICK = 60.0
 
@@ -59,11 +56,20 @@ def clamp_reputation(value: float, t_quan: dict) -> float:
     return round(clamped, 6)
 
 
+def compute_tip(base_price: int, patience_ticks_left: int, t_quan: dict) -> int:
+    """Chốt boa = floor(base_price * tip_rate) nếu patience_ticks_left / patience_max >= tip_min_patience_ratio."""
+    patience_max = ticks_from_s(t_quan["patience_s"])
+    qualifies = Decimal(patience_ticks_left) >= Decimal(str(t_quan["tip_min_patience_ratio"])) * Decimal(patience_max)
+    if not qualifies:
+        return 0
+    return int((Decimal(base_price) * Decimal(str(t_quan["tip_rate"]))).to_integral_value(rounding=ROUND_FLOOR))
+
+
 def normalize_recipe(recipe: dict) -> dict:
     return {k: recipe[k] for k in sorted(recipe) if recipe[k] > 0}
 
 
-def validate_dish_payload(dish, menu: dict, label: str = "dish") -> dict:
+def validate_dish_payload(dish, menu: dict, label: str = "dish", allowed_dishes=None) -> dict:
     if not isinstance(dish, dict):
         raise BadInput(f"{label} phải là object món")
     if set(dish) != DISH_KEYS:
@@ -74,6 +80,8 @@ def validate_dish_payload(dish, menu: dict, label: str = "dish") -> dict:
     did = dish["dish_id"]
     if not isinstance(did, str) or did not in menu:
         raise BadInput(f"{label}.dish_id không hợp lệ: {did!r}")
+    if allowed_dishes is not None and did not in allowed_dishes:
+        raise BadInput(f"{label}.dish_id ({did}) không nằm trong kế hoạch ngày")
     bp = _check_pos_int(f"{label}.base_price", dish["base_price"])
     return {"order_id": oid, "dish_id": did, "base_price": bp}
 
@@ -102,15 +110,22 @@ def _validate_pos_bounds(name: str, pos, bounds: dict):
             raise BadInput(f"{name} nằm ngoài vùng quán ({axis} ∈ [{lo}, {hi}])")
 
 
-def validate_quan_scenario_block(block: dict, tuning: dict):
-    """Kiểm cấu trúc và bất biến mức luật của khối `scenario.quan` (PRD-0 mục D).
+def validate_quan_scenario_block(block: dict, tuning: dict, in_day_mode: bool = False, allowed_dishes=None):
+    """Kiểm cấu trúc và bất biến mức luật của khối `scenario.quan` (Contract v1.0 / v1.1).
 
-    Lưu ý: nếu `stock` vắng mặt trong `block`, tồn kho có thể được nạp từ `--inventory`,
-    nên kiểm giữ chỗ so với tồn kho thực tế được chạy lại trong `init_quan_entities`.
+    - Khi `in_day_mode=True`: cấm `quan.stock` và `quan.reputation` (Contract v1.1 mục 4.3).
+    - Nếu `stock` vắng mặt trong `block`, tồn kho có thể nạp từ `--inventory` hoặc từ `gather` trong `day`,
+      nên kiểm giữ chỗ so với tồn kho thực tế được chạy lại trong `init_quan_entities`.
     """
     t_quan = tuning["quan"]
     menu = tuning["menu"]
     bounds = t_quan["bounds"]
+
+    if in_day_mode:
+        if "stock" in block:
+            raise BadInput("cấm khai quan.stock khi chạy --mode day (dùng gather.hold)")
+        if "reputation" in block:
+            raise BadInput("cấm khai quan.reputation khi chạy --mode day (dùng day.reputation)")
 
     if "random_customers" in block and not isinstance(block["random_customers"], bool):
         raise BadInput("quan.random_customers phải là boolean")
@@ -146,7 +161,7 @@ def validate_quan_scenario_block(block: dict, tuning: dict):
             _validate_pos_bounds(f"tables.{tb['id']}.pos", tb["pos"], bounds)
         merged_tables[tb["id"]].update(tb)
 
-    stock = validate_items(block["stock"], KINDS_P1) if "stock" in block else None
+    stock = validate_items(block["stock"], KINDS_V11) if "stock" in block else None
 
     init_quan_entities(
         t_quan=t_quan,
@@ -157,7 +172,8 @@ def validate_quan_scenario_block(block: dict, tuning: dict):
         raw_customers=block.get("customers", []),
         raw_hand=block.get("hand"),
         ids=None,
-        allowed_kinds=KINDS_P1,
+        allowed_kinds=KINDS_V11,
+        allowed_dishes=allowed_dishes,
         check_stock_capacity=(stock is not None),
     )
 
@@ -172,9 +188,10 @@ def init_quan_entities(
     raw_hand,
     ids=None,
     allowed_kinds=None,
+    allowed_dishes=None,
     check_stock_capacity: bool = True,
 ):
-    """Chuẩn hóa và kiểm mâu thuẫn mức luật cho stoves, hand, customers (PRD-0 mục D).
+    """Chuẩn hóa và kiểm mâu thuẫn mức luật cho stoves, hand, customers (Contract v1.0 / v1.1).
 
     Trả về `(stoves, hand, customers)` đã chuẩn hóa và sắp theo id.
     """
@@ -203,13 +220,13 @@ def init_quan_entities(
                 raise BadInput(f"stoves.{st['id']}: bếp cooking phải có dish")
             if cook_left <= 0 or ready_ticks != 0:
                 raise BadInput(f"stoves.{st['id']}: bếp cooking phải có cook_ticks_left > 0 và ready_ticks == 0")
-            dish = validate_dish_payload(raw_dish, menu, f"stoves.{st['id']}.dish")
+            dish = validate_dish_payload(raw_dish, menu, f"stoves.{st['id']}.dish", allowed_dishes=allowed_dishes)
         else:  # ready
             if raw_dish is None:
                 raise BadInput(f"stoves.{st['id']}: bếp ready phải có dish")
             if cook_left != 0:
                 raise BadInput(f"stoves.{st['id']}: bếp ready phải có cook_ticks_left == 0")
-            dish = validate_dish_payload(raw_dish, menu, f"stoves.{st['id']}.dish")
+            dish = validate_dish_payload(raw_dish, menu, f"stoves.{st['id']}.dish", allowed_dishes=allowed_dishes)
 
         if dish is not None:
             oid = dish["order_id"]
@@ -224,7 +241,7 @@ def init_quan_entities(
     if raw_hand is None:
         hand = None
     else:
-        hand = validate_dish_payload(raw_hand, menu, "hand")
+        hand = validate_dish_payload(raw_hand, menu, "hand", allowed_dishes=allowed_dishes)
         oid = hand["order_id"]
         if oid in dishes_by_order:
             raise BadInput(f"đơn {oid} cùng nằm trên bếp và tay")
@@ -261,6 +278,8 @@ def init_quan_entities(
         dish_id = raw_c.get("dish_id")
         if not isinstance(dish_id, str) or dish_id not in menu:
             raise BadInput(f"customers.{cid}: dish_id không hợp lệ: {dish_id!r}")
+        if allowed_dishes is not None and dish_id not in allowed_dishes:
+            raise BadInput(f"customers.{cid}: món {dish_id} không nằm trong kế hoạch ngày")
 
         order_tick = _check_nonneg_int(f"customers.{cid}.order_tick", raw_c.get("order_tick", 0))
         state = raw_c.get("state", "waiting")
@@ -407,7 +426,7 @@ def init_quan_entities(
     return norm_stoves, hand, sort_by_id(customers)
 
 
-# --- Nghiệp vụ kho khả dụng, chọn món, đơn hàng & vòng đời khách (N3-01..N3-03) ---
+# --- Nghiệp vụ kho khả dụng, chọn món, đơn hàng & vòng đời khách ---
 
 def available_stock(stock: dict, customers: list) -> dict:
     """Kho khả dụng = tồn vật lý − tổng phần giữ chỗ của các khách đang ngồi."""
@@ -419,18 +438,23 @@ def available_stock(stock: dict, customers: list) -> dict:
     return {k: v for k, v in sorted(avail.items()) if v > 0}
 
 
-def cookable_dishes(menu: dict, stock: dict, customers: list) -> list:
-    """Danh sách dish_id nấu được từ kho khả dụng, sắp theo mã Unicode."""
+def cookable_dishes(menu: dict, stock: dict, customers: list, allowed_dishes=None) -> list:
+    """Danh sách dish_id nấu được từ kho khả dụng, sắp theo mã Unicode.
+
+    Trong `--mode day`: truyền `allowed_dishes = set(day_plan["dishes"])` để lọc theo kế hoạch ngày
+    TRƯỚC KHI lọc nguyên liệu khả dụng (Contract v1.1 mục 2 & 4.5).
+    """
     avail = available_stock(stock, customers)
+    candidates = sorted(menu) if allowed_dishes is None else [d for d in sorted(menu) if d in allowed_dishes]
     return [
         dish_id
-        for dish_id in sorted(menu)
+        for dish_id in candidates
         if all(avail.get(k, 0) >= cnt for k, cnt in menu[dish_id]["recipe"].items())
     ]
 
 
 def oldest_reserved_order(customers: list):
-    """Đơn `reserved` cũ nhất theo `(order_tick, id_key(table_id))` cho bếp idle (Người 4 dùng)."""
+    """Đơn `reserved` cũ nhất theo `(order_tick, id_key(table_id))` cho bếp idle."""
     candidates = [c for c in customers if c["state"] == "waiting" and c["order_status"] == "reserved"]
     if not candidates:
         return None
@@ -440,7 +464,7 @@ def oldest_reserved_order(customers: list):
 def consume_order_for_cooking(stock: dict, customer: dict, menu: dict):
     """Tiêu đúng nguyên liệu giữ của đơn `reserved`, chốt giá và chuyển sang `assigned`.
 
-    Trả về `(items_sorted, base_price)` để Người 4 phát `cook_started` và gán lên bếp.
+    Trả về `(items_sorted, base_price)` để phát `cook_started` và gán lên bếp.
     """
     if customer["state"] != "waiting" or customer["order_status"] != "reserved":
         raise ValueError(f"đơn {customer['id']} không ở trạng thái reserved")
@@ -495,13 +519,7 @@ def process_waiting_departures(
     reputation: float,
     closing: bool = False,
 ):
-    """Bước 4 (phần khách chờ rời bàn): duyệt theo id bàn.
-
-    - Ca còn giờ (`closing=False`): khách `waiting` có `patience_ticks_left == 0` rời (`reason="patience"`),
-      uy tín đổi theo `left_reputation_delta` (kẹp trong `[min, max]`), dọn liên kết giữ chỗ / bếp / tay.
-    - Hết ca (`closing=True`): mọi khách `waiting` còn lại rời (`reason="closing"`), KHÔNG đổi uy tín,
-      dọn liên kết giữ chỗ / bếp / tay.
-    """
+    """Bước 4 (phần khách chờ rời bàn): duyệt theo id bàn."""
     events = []
     by_table = {c["table_id"]: c for c in customers}
     for tb in sort_by_id(tables):
@@ -534,16 +552,9 @@ def spawn_customer_if_due(
     rng,
     ids,
     random_customers: bool = True,
+    allowed_dishes=None,
 ) -> list:
-    """Bước 5: sinh khách mới theo `phase_tick` (chỉ gọi khi ca còn giờ).
-
-    - Tôn trọng `random_customers=False`.
-    - Lịch: `first_customer_tick`, rồi mỗi `customer_interval_s * 60` tick.
-    - Không còn bàn trống -> bỏ lượt (không phát `no_dish`).
-    - Có bàn trống -> chọn bàn id nhỏ nhất; chọn đều theo seed trong các món đủ kho khả dụng.
-    - Thiếu món -> phát `no_dish`.
-    - Khách mới giữ ngay đúng công thức, `order_tick = phase_tick`, kiên nhẫn đầy (giảm từ bước sau).
-    """
+    """Bước 5: sinh khách mới theo `phase_tick` (chỉ gọi khi ca còn giờ)."""
     if not random_customers:
         return []
     first = t_quan["first_customer_tick"]
@@ -557,7 +568,7 @@ def spawn_customer_if_due(
         return []
 
     table = free_tables[0]
-    dishes = cookable_dishes(menu, stock, customers)
+    dishes = cookable_dishes(menu, stock, customers, allowed_dishes=allowed_dishes)
     if not dishes:
         return [("no_dish", {})]
 
