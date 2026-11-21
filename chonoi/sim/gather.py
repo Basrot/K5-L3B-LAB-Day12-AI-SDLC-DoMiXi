@@ -60,10 +60,11 @@ class GatherSim:
         if "fish" in scenario:
             src_fish = scenario["fish"]
         elif scenario.get("random_fish", True):
-            src_fish = t["fish_initial"]
+            fi = t["fish_initial"]
+            src_fish = self._spawn_initial_fish(t, streams, ids) if isinstance(fi, int) else fi
         else:
             src_fish = []
-        # Đàn cá đứng yên ở phase này. Cá bơi / sinh thêm là việc của phase sau.
+        # Đàn cá đứng yên ở khung nền; bơi / sinh thêm theo lịch là Lát 1 Phase 2.
         self.fish = [{"id": f["id"], "kind": f["kind"], "pos": [float(c) for c in f["pos"]],
                       "heading_deg": f.get("heading_deg", 0)} for f in src_fish]
         for coll in (self.nodes, self.fish):
@@ -168,6 +169,43 @@ class GatherSim:
         return events
 
     # --- tiện ích ---------------------------------------------------------------
+    @staticmethod
+    def _spawn_initial_fish(t, streams, ids):
+        rng = streams.get("fish_spawn")
+        spawn_x = t["fish_spawn_x"]
+        spawn_depths = t["fish_spawn_depths"]
+        weights = t["fish_weights"]
+        used_pos = set()
+        out = []
+        for _ in range(t["fish_initial"]):
+            avail = {}
+            for kind in sorted(spawn_depths):
+                pts = [(x, d) for x in spawn_x for d in spawn_depths[kind] if (x, d) not in used_pos]
+                if pts:
+                    avail[kind] = pts
+            if not avail:
+                break
+            species = sorted(avail)
+            w = [weights[k] for k in species]
+            total = sum(w)
+            r = rng.random() * total
+            acc = 0.0
+            picked = species[-1]
+            for k, wk in zip(species, w):
+                acc += wk
+                if r <= acc:
+                    picked = k
+                    break
+            x, d = rng.choice(avail[picked])
+            used_pos.add((x, d))
+            out.append({
+                "id": ids.new("F"),
+                "kind": picked,
+                "pos": [float(x), float(d)],
+                "heading_deg": rng.uniform(0.0, 360.0),
+            })
+        return out
+
     def _collect(self, kind, count, events):
         if len(self.hold) + count > self.t['hold_capacity']:
             events.append(('hold_full', {}))
