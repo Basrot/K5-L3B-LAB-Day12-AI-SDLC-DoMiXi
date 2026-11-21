@@ -533,7 +533,7 @@ def main(argv=None) -> int:
         sys.stderr.write(f"không mở được cổng {a.port}: {e}\n")
         return 1
     server.start()
-    print(f"Mở trình duyệt tại {server.url}  (chế độ {a.mode}, seed {a.seed}). Ctrl+C để dừng.", flush=True)
+    print(f"Open {server.url} (mode {a.mode}, seed {a.seed}). Ctrl+C to stop.", flush=True)
     try:
         while True:
             time.sleep(0.5)
