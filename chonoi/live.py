@@ -188,13 +188,17 @@ class LiveGame:
             if mode == self.mode and self._demo_mode == demo:
                 return
             stock = None
+            delivery = None
             if self.mode == 'gather' and mode == 'quan' and not demo:
+                delivery = [dict(item) for item in self.session.sim.fresh_items]
+                self.session.sim.fresh_items.clear()
                 stock = hold_to_items(self.session.sim.hold)
                 self.session.sim.hold.clear()
             self.mode = mode
             self._demo_mode = demo
             key = 'quan-demo' if demo else mode
             cached = self._sessions.get(key)
+            previous_fresh = list(cached.sim.fresh_items) if cached is not None and hasattr(cached.sim, 'fresh_items') else None
             if cached is not None and mode == 'quan' and cached.done:
                 remaining = dict(cached.sim.stock)
                 for k, v in (stock or {}).items():
@@ -213,6 +217,17 @@ class LiveGame:
                                     else LiveQuanSim(self.tuning, {}, old.rng, old.ids, stock))
                 self._sessions[key] = self.session
             self._args = (mode, self.tuning, {}, self._args[3], stock)
+            if delivery is not None:
+                # Replace only the newly delivered quantities; preserve existing stock freshness.
+                existing = previous_fresh if previous_fresh is not None else list(self.session.sim.fresh_items)
+                for kind, count in ((stock or {}) if previous_fresh is None else {}).items():
+                    for _ in range(count):
+                        index = next((i for i in range(len(existing)-1, -1, -1) if existing[i]['kind'] == kind), None)
+                        if index is not None:
+                            existing.pop(index)
+                for item in delivery:
+                    item['id'] = self.session.sim.ids.new('I')
+                self.session.sim.fresh_items = existing + delivery
             self.inputs = LiveInputs()
             self.events = []
             self.error = None

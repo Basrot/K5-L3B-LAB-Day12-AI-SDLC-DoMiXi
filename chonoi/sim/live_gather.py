@@ -7,6 +7,7 @@ from ..ids import sort_by_id
 from ..live_world import load_world
 from ..inventory import KINDS_P1, hold_to_items
 from ..inputs import InputState
+from .freshness import new_item, decay, snapshot_items
 
 
 class LiveGatherSim(GatherSim):
@@ -40,17 +41,77 @@ class LiveGatherSim(GatherSim):
                              for n in self.extras['collectibles'] + self.world['collectibles']]
         self.collection = []
         self.pickup_ticks = 0
+        self.poison_ticks = 0
+        self.fresh_items = [new_item(self, kind) for kind in self.hold]
+        self.hazards = []
+        cfg = self.world['hazards']
+        stream = self.rng.get('live_hazards')
+        kinds = ['poison_fish'] * cfg['poison_count'] + ['jellyfish'] * cfg['jelly_count']
+        stream.shuffle(kinds)
+        columns = math.ceil(math.sqrt(len(kinds) * (cfg['spawn_x'][1] - cfg['spawn_x'][0]) /
+                                      (cfg['spawn_depth'][1] - cfg['spawn_depth'][0])))
+        rows = math.ceil(len(kinds) / columns)
+        cells = [(col, row) for row in range(rows) for col in range(columns)]
+        stream.shuffle(cells)
+        for kind, (col, row) in zip(kinds, cells):
+            # One hazard per cell; keep jitter small enough to preserve separation.
+            x = cfg['spawn_x'][0] + (col + stream.uniform(.3, .7)) * (cfg['spawn_x'][1] - cfg['spawn_x'][0]) / columns
+            depth = cfg['spawn_depth'][0] + (row + stream.uniform(.3, .7)) * (cfg['spawn_depth'][1] - cfg['spawn_depth'][0]) / rows
+            pos = [x, depth]
+            self.hazards.append({'id': self.ids.new('H'), 'kind': kind, 'pos': pos,
+                                 'base_depth': depth})
 
     def step(self, inp):
+        if self.done:
+            return []
+        self.poison_ticks = max(0, self.poison_ticks - 1)
+        freshness_events = []
+        decay(self, self.fresh_items, self.world['freshness']['gather_decay'], freshness_events)
+        poison_target = None
+        if not self._at_surface() and inp.pressed('catch') and self.catch_cd_ticks == 0:
+            nearby = [h for h in sort_by_id(self.hazards) if h['kind'] == 'poison_fish'
+                      and math.dist(self.pos, h['pos']) <= self.world['hazards']['catch_radius']]
+            if nearby:
+                target = min(nearby, key=lambda h: math.dist(self.pos, h['pos']))
+                normal_distance = min((math.dist(self.pos, f['pos']) for f in self.fish), default=math.inf)
+                if math.dist(self.pos, target['pos']) < normal_distance:
+                    poison_target = target
+                    inp = InputState(inp.move, inp.held, {name for name in ('interact',) if inp.pressed(name)})
         self.pickup_ticks = max(0, self.pickup_ticks - 1)
         cfg = self.world['weather']
         # Apply cold before base survival so oxygen-empty and choking keep their ordering.
-        if not self.done and self.weather == 'snow' and not self._at_surface():
-            self.oxygen_ticks = max(1, self.oxygen_ticks - cfg['snow_extra_oxygen']) if self.oxygen_ticks else 0
+        if not self._at_surface():
+            extra = (cfg['snow_extra_oxygen'] if self.weather == 'snow' else 0)
+            extra += self.world['hazards']['extra_oxygen'] if self.poison_ticks else 0
+            self.oxygen_ticks = max(1, self.oxygen_ticks - extra) if self.oxygen_ticks else 0
         if self.weather == 'wind':
             inp = InputState(tuple(-axis for axis in inp.move), inp.held,
                              {name for name in ('interact', 'catch') if inp.pressed(name)})
         events = super().step(inp)
+        # Keep original acquisition order; losses remove the most recently acquired items.
+        counts = {}
+        for kind in self.hold:
+            counts[kind] = counts.get(kind, 0) + 1
+        retained = []
+        for item in self.fresh_items:
+            if counts.get(item['kind'], 0):
+                retained.append(item)
+                counts[item['kind']] -= 1
+        for kind, count in counts.items():
+            retained.extend(new_item(self, kind) for _ in range(count))
+        self.fresh_items = retained
+        events = freshness_events + events
+        if not self.done:
+            if poison_target is not None:
+                self.hazards.remove(poison_target)
+                self._hazard_hit('poison_fish', events)
+            for hazard in sort_by_id(self.hazards):
+                if hazard['kind'] == 'jellyfish':
+                    cfg = self.world['hazards']
+                    hazard['pos'][1] = hazard['base_depth'] + cfg['jelly_amplitude'] * math.sin(self.world_tick * math.tau / cfg['jelly_period'])
+                    if not self._at_surface() and math.dist(self.pos, hazard['pos']) <= cfg['radius']:
+                        self._hazard_hit('jellyfish', events)
+                        break
         if not self.done:
             self._weather_step(events)
         if self.done or self._at_surface() or not inp.pressed('interact'):
@@ -68,12 +129,31 @@ class LiveGatherSim(GatherSim):
                 events.append(('treasure_picked', {'id': n['id'], 'kind': n['kind'], 'label': n['label']}))
         return events
 
+    def _hazard_hit(self, cause, events):
+        if self.done or self.invuln_ticks > 0:
+            return
+        cfg = self.world['hazards']
+        self.hp = max(0, self.hp - cfg['damage'])
+        self.invuln_ticks = cfg['grace_ticks']
+        self.poison_ticks = cfg['poison_ticks']
+        events.append(('hazard_hit', {'cause': cause, 'hp': self.hp, 'poison_ticks': self.poison_ticks}))
+        if self.hp == 0:
+            lost = list(reversed(self.hold))
+            self.hold.clear()
+            self.fresh_items.clear()
+            events.append(('faint', {'cause': cause, 'lost': lost, 'hp': 0}))
+            self._finish('fainted', events)
+
     def _draw_weather(self, current):
         stream = self.rng.get('live_weather')
         if not self._weather_bag:
             self._weather_bag = list(self.world['weather']['weights'])
             stream.shuffle(self._weather_bag)
         candidates = [kind for kind in self._weather_bag if kind != current]
+        if current != 'rain' and stream.random() < .45:
+            if 'rain' in self._weather_bag:
+                self._weather_bag.remove('rain')
+            return 'rain'
         if not candidates:
             self._weather_bag.clear()
             return self._draw_weather(current)
@@ -153,6 +233,7 @@ class LiveGatherSim(GatherSim):
             if self.hp == 0:
                 lost = list(reversed(self.hold))
                 self.hold.clear()
+                self.fresh_items.clear()
                 events.append(('faint', {'cause': 'pursuer', 'lost': lost, 'hp': 0}))
                 self._finish('fainted', events)
 
@@ -162,6 +243,9 @@ class LiveGatherSim(GatherSim):
 
     def snapshot(self):
         snap = super().snapshot()
+        snap['fresh_items'] = snapshot_items(self.fresh_items)
+        snap.update(hazards=[{'id': h['id'], 'kind': h['kind'], 'pos': list(h['pos'])} for h in self.hazards],
+                    poison_ticks=self.poison_ticks)
         snap.update(collectibles=self.collectibles, collection=list(self.collection),
                     collection_capacity=self.extras['capacity'], pickup_ticks=self.pickup_ticks,
                     pickup_radius=self.extras['pickup_radius'])

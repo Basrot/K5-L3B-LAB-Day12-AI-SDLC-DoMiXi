@@ -25,14 +25,58 @@ class LiveWorldTest(unittest.TestCase):
         a = LiveGame('gather', self.t, {}, 3).session.sim
         b = LiveGame('gather', self.t, {}, 3).session.sim
         seen = []
-        for _ in range(16):
+        for _ in range(32):
             for sim in (a, b):
                 sim.world_tick = sim.weather_end
                 sim._weather_step([])
             self.assertEqual((a.weather, a.next_weather), (b.weather, b.next_weather))
             self.assertNotEqual(a.weather, a.next_weather)
             seen.append(a.weather)
-        self.assertEqual(set(seen[:8]), set(a.world['weather']['weights']))
+        # Rain can now interrupt the shuffled rotation more frequently.
+        self.assertEqual(set(seen), set(a.world['weather']['weights']))
+        self.assertGreater(seen.count('rain'), seen.count('snow'))
+
+    def test_freshness_decay_spoil_once_and_delivery(self):
+        from chonoi.sim.freshness import new_item
+        game = LiveGame('gather', self.t, {}, 3)
+        s = game.session.sim
+        s.hold = ['ca_loc']
+        item = new_item(s, 'ca_loc')
+        item['fresh_units'] = 7200
+        s.fresh_items = [item]
+        events = s.step(inp())
+        self.assertEqual(item['fresh_units'], 7198)
+        self.assertEqual(sum(name == 'spoiled' for name, _ in events), 1)
+        self.assertFalse(any(name == 'spoiled' for name, _ in s.step(inp())))
+        game.switch_mode('quan')
+        q = game.session.sim
+        self.assertEqual(q.fresh_items[0]['fresh_units'], 7196)
+        self.assertEqual(q.stock['ca_loc'], 1)
+        q.step(inp())
+        self.assertEqual(q.fresh_items[0]['fresh_units'], 7195)
+        self.assertEqual(q.customers, [])
+
+    def test_fresh_reservation_replaces_spoiled_and_prices_used_items(self):
+        from chonoi.sim.freshness import new_item
+        q = LiveGame('quan', self.t, {}, 3).session.sim
+        q.customers = []
+        recipe = q.menu['ca_loc_nuong_trui']['recipe']
+        q.fresh_items = []
+        q.stock = {}
+        for kind, count in recipe.items():
+            for _ in range(count):
+                item = new_item(q, kind)
+                item['fresh_units'] = 12000
+                q.fresh_items.append(item)
+                q.stock[kind] = q.stock.get(kind, 0) + 1
+        c = {'id':'C999','table_id':'T1','state':'waiting','dish_id':'ca_loc_nuong_trui',
+             'reserved':dict(recipe),'order_tick':0,'patience_ticks_left':1000}
+        q.customers.append(c)
+        q._reserve_fresh()
+        self.assertTrue(c['reserved_ids'])
+        q._interact(q.stoves[0], 0, [])
+        self.assertEqual(c['base_price'], q.menu[c['dish_id']]['price']//2)
+        self.assertEqual(q.fresh_items, [])
 
     def test_wind_reverses_movement_and_preserves_catch(self):
         s = LiveGame('gather', self.t, {}, 3).session.sim
@@ -45,6 +89,37 @@ class LiveWorldTest(unittest.TestCase):
         s.fish = [{'id': 'F999', 'kind': 'ca_loc', 'pos': list(s.pos), 'heading_deg': 0}]
         events = s.step(inp('catch'))
         self.assertTrue(any(name == 'fish_caught' for name, _ in events))
+
+    def test_hazards_stack_with_snow_and_can_cause_faint(self):
+        s = LiveGame('gather', self.t, {}, 3).session.sim
+        s.pos = [30, 8]
+        s.hazards = [{'id': 'H999', 'kind': 'jellyfish', 'pos': list(s.pos), 'base_depth': 8}]
+        s.weather = 'snow'
+        s.weather_end = 99999
+        hp = s.hp
+        s.step(inp())
+        self.assertEqual(s.hp, hp - 1)
+        self.assertGreater(s.poison_ticks, 0)
+        oxygen = s.oxygen_ticks
+        s.step(inp())
+        self.assertEqual(s.oxygen_ticks, oxygen - 4)
+        self.assertEqual(s.hp, hp - 1)
+        s.hp = 1
+        s.invuln_ticks = 0
+        s.hold = ['ca_loc']
+        s.step(inp())
+        self.assertEqual(s.reason, 'fainted')
+        self.assertEqual(s.hold, [])
+
+    def test_catching_poison_fish_does_not_add_it_to_inventory(self):
+        s = LiveGame('gather', self.t, {}, 3).session.sim
+        s.pos = [30, 8]
+        s.fish = []
+        s.hazards = [{'id': 'H999', 'kind': 'poison_fish', 'pos': list(s.pos), 'base_depth': 8}]
+        events = s.step(inp('catch'))
+        self.assertTrue(any(name == 'hazard_hit' for name, _ in events))
+        self.assertEqual(s.hold, [])
+        self.assertEqual(s.hazards, [])
 
     def test_live_gather_hud_has_flower_icons_stack_counts_and_oxygen_warning(self):
         html = (Path(__file__).resolve().parents[1] / 'chonoi' / 'web' / 'index.html').read_text(encoding='utf-8')

@@ -34,7 +34,7 @@
     ],
     "weights": {
       "sun": 3,
-      "rain": 3,
+      "rain": 7,
       "snow": 2,
       "fog": 2,
       "wind": 2,
@@ -622,5 +622,31 @@
       "sprite": 3,
       "drink": "Trà hoa"
     }
-  ]
+  ],
+  "hazards": {
+    "damage": 1,
+    "poison_ticks": 240,
+    "extra_oxygen": 2,
+    "grace_ticks": 120,
+    "radius": 1.6,
+    "catch_radius": 2,
+    "jelly_amplitude": 1.2,
+    "jelly_period": 240,
+    "spawn_x": [
+      10,
+      210
+    ],
+    "spawn_depth": [
+      4,
+      30
+    ],
+    "poison_count": 16,
+    "jelly_count": 18
+  },
+  "freshness": {
+    "maximum": 24000,
+    "spoiled_below": 7200,
+    "gather_decay": 2,
+    "quan_decay": 1
+  }
 }

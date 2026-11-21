@@ -1,8 +1,9 @@
 """Playable restaurant extension, deliberately isolated from contract QuanSim."""
 import math
 from .quan import QuanSim
-from ..ids import sort_by_id
+from ..ids import sort_by_id, id_key
 from ..live_world import load_world
+from .freshness import new_item, decay, snapshot_items
 
 
 class LiveQuanSim(QuanSim):
@@ -14,6 +15,7 @@ class LiveQuanSim(QuanSim):
         super().__init__(tuning, scenario, streams, ids, inventory)
         self.elapsed = 0
         self.seat_counter = 0
+        self.fresh_items = [new_item(self, kind) for kind, count in self.stock.items() for _ in range(count)]
         self.order_plan = None
         self.orders_spawned = {}
         self.extra_customer_limit = 0
@@ -54,12 +56,41 @@ class LiveQuanSim(QuanSim):
         }
         self.invuln_ticks = 0
 
+    def _reserve_fresh(self):
+        threshold = self.world['freshness']['spoiled_below']
+        used = set()
+        for c in sorted(self.customers, key=lambda c: (c.get('order_tick', 0), id_key(c['table_id']))):
+            if c['state'] != 'waiting':
+                continue
+            if c.get('order_status') == 'unfulfillable':
+                continue
+            old = c.get('reserved_ids', [])
+            available = {i['id']: i for i in self.fresh_items if i['fresh_units'] >= threshold and i['id'] not in used}
+            if old and all(ident in available for ident in old):
+                used.update(old)
+                continue
+            selected = []
+            for kind, count in self.menu[c['dish_id']]['recipe'].items():
+                choices = sort_by_id([i for i in available.values() if i['kind'] == kind])
+                choices.sort(key=lambda i: -i['fresh_units'])
+                if len(choices) < count:
+                    selected = []
+                    break
+                selected.extend(i['id'] for i in choices[:count])
+            c['reserved_ids'] = selected
+            c['reserved'] = dict(self.menu[c['dish_id']]['recipe']) if selected else {}
+            c['order_status'] = 'reserved' if selected else 'unfulfillable'
+            used.update(selected)
+
     def _order(self, events):
         occupied = {c['table_id'] for c in self.customers}
         tables = [t for t in sort_by_id(self.tables) if t['id'] not in occupied]
         if not tables:
             return
-        available = dict(self.stock)
+        available = {}
+        for item in self.fresh_items:
+            if item['fresh_units'] >= self.world['freshness']['spoiled_below']:
+                available[item['kind']] = available.get(item['kind'], 0) + 1
         for c in self.customers:
             for k, amount in c.get('reserved', {}).items():
                 available[k] = available.get(k, 0) - amount
@@ -83,14 +114,19 @@ class LiveQuanSim(QuanSim):
         self.seat_counter += 1
         c = dict(person, id=self.ids.new('C'), table_id=tables[0]['id'], state='waiting',
                  dish_id=dish, reserved=dict(self.menu[dish]['recipe']),
-                 patience_ticks_left=round(self.t['patience_s'] * 60))
+                 order_tick=self.elapsed, patience_ticks_left=round(self.t['patience_s'] * 60))
         self.customers.append(c)
+        self._reserve_fresh()
         events.append(('customer_arrived', {'customer_id': c['id'], 'dish_id': dish}))
 
     def step(self, inp):
+        if self.done:
+            return []
         events = []
         self.elapsed += 1
         self.time_left_ticks = max(0, self.time_left_ticks - 1)
+        decay(self, self.fresh_items, self.world['freshness']['quan_decay'], events)
+        self._reserve_fresh()
         self.invuln_ticks = max(0, self.invuln_ticks - 1)
 
         # Xử lý hành vi Khá Bảnh & Chú Công An
@@ -107,7 +143,7 @@ class LiveQuanSim(QuanSim):
             if c['state'] == 'eating':
                 c['eat_ticks_left'] -= 1
                 if c['eat_ticks_left'] <= 0:
-                    price = self.menu[c['dish_id']]['price']
+                    price = c.get('base_price', self.menu[c['dish_id']]['price'])
                     amount = price + c.get('tip', 0)
                     self.money += amount
                     self.earned += amount
@@ -359,9 +395,13 @@ class LiveQuanSim(QuanSim):
                 target.update(state='idle', dish=None, customer_id=None)
                 events.append(('dish_picked', dict(self.hand)))
             elif target['state'] == 'idle':
-                waiting = [c for c in sort_by_id(self.customers) if c['state'] == 'waiting']
+                waiting = [c for c in sort_by_id(self.customers) if c['state'] == 'waiting' and c.get('reserved_ids')]
                 if waiting:
                     c = waiting[0]
+                    selected = [i for i in self.fresh_items if i['id'] in c['reserved_ids']]
+                    c['base_price'] = self.menu[c['dish_id']]['price'] * sum(i['fresh_units'] for i in selected) // (len(selected) * self.world['freshness']['maximum'])
+                    self.fresh_items = [i for i in self.fresh_items if i['id'] not in c['reserved_ids']]
+                    c['reserved_ids'] = []
                     for kind, count in c['reserved'].items():
                         self.stock[kind] -= count
                     c['reserved'] = {}
@@ -374,12 +414,13 @@ class LiveQuanSim(QuanSim):
             if c and c['state'] == 'assigned':
                 ratio = c['patience_ticks_left'] / (self.t['patience_s'] * 60)
                 c.update(state='eating', eat_ticks_left=round(self.t['eat_s'] * 60),
-                         tip=round(self.menu[c['dish_id']]['price'] * self.t['tip_rate']) if ratio >= self.t['tip_min_patience_ratio'] else 0)
+                         tip=math.floor(c.get('base_price', self.menu[c['dish_id']]['price']) * self.t['tip_rate']) if ratio >= self.t['tip_min_patience_ratio'] else 0)
                 self.hand = None
                 events.append(('served', {'customer_id': c['id']}))
 
     def snapshot(self):
         snap = super().snapshot()
+        snap['fresh_items'] = snapshot_items(self.fresh_items)
         labels = {k: v.get('label', self.world['dish_labels'].get(k, k)) for k, v in self.menu.items()}
         for table, source in zip(snap['tables'], self.tables):
             table['label'] = source['label']
