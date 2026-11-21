@@ -27,6 +27,7 @@ test_jack_performance_and_tip_bonus (test_live_world.LiveWorldTest.test_jack_per
 test_kha_banh_and_cong_an_interactions (test_live_world.LiveWorldTest.test_kha_banh_and_cong_an_interactions) ... ok
 test_live_gather_hud_has_flower_icons_stack_counts_and_oxygen_warning (test_live_world.LiveWorldTest.test_live_gather_hud_has_flower_icons_stack_counts_and_oxygen_warning) ... ok
 test_live_menu_uses_all_harvested_ingredients (test_live_world.LiveWorldTest.test_live_menu_uses_all_harvested_ingredients) ... ok
+test_live_quan_blocks_fence_stoves_and_tables_while_allowing_interact (test_live_world.LiveWorldTest.test_live_quan_blocks_fence_stoves_and_tables_while_allowing_interact) ... ok
 test_mode_switch_transfers_gather_stock (test_live_world.LiveWorldTest.test_mode_switch_transfers_gather_stock) ... ok
 test_no_food_has_no_unfulfillable_orders (test_live_world.LiveWorldTest.test_no_food_has_no_unfulfillable_orders) ... ok
 test_pursuer_hit_starts_a_visible_hug_scene (test_live_world.LiveWorldTest.test_pursuer_hit_starts_a_visible_hug_scene) ... ok
@@ -155,7 +156,7 @@ test_soak_10_days_completes_without_crash_and_is_deterministic (test_v13_bench_s
 test_ui_has_three_clear_warnings_and_high_contrast_mode (test_v13_bench_soak.TestContractV13.test_ui_has_three_clear_warnings_and_high_contrast_mode) ... ok
 
 ----------------------------------------------------------------------
-Ran 111 tests in 54.853s
+Ran 112 tests in 76.799s
 
 OK
 

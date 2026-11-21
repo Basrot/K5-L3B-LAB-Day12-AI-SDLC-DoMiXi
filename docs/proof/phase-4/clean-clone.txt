@@ -4,4 +4,4 @@
 2. python tools/check_team.py -> exit 0: OK: 4 thành viên: Basrot, BFNGOC2, daongochan, DucTai2804
 3. Headless gather->quan handoff -> exit (0, 0), inventory={"items":[]}
 4. Live GUI server (--mode campaign) HTTP / & /state -> exit 0: LIVE_OK gather title
-5. Full test suite in clean clone -> exit 0: Ran 111 tests in 54.853s | OK
+5. Full test suite in clean clone -> exit 0: Ran 112 tests in 76.799s | OK
