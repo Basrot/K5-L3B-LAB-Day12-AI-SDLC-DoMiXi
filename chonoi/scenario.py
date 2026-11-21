@@ -1,25 +1,28 @@
-"""Nạp và kiểm scenario (Contract D). Trả về dict của đúng khối theo mode.
+"""Nạp và kiểm scenario (Contract D v1.0 / v1.1).
 
-KHUNG: kiểm cú pháp, id trùng, bộ đếm âm, khoang vượt sức chứa, trường lạ.
-Đã bổ sung kiểm mâu thuẫn mức luật cho `quan` qua `chonoi.sim.quan_orders.validate_quan_scenario_block`
-(giữ chỗ, liên kết đơn/bếp/tay, trạng thái khách ăn/chờ, bộ đếm, tọa độ) — PRD-0 mục D.
+Trả về dict của khối tương ứng (`gather`/`quan`), hoặc dict chứa `{day, gather, quan}` khi chạy `--mode day`.
+Đã bổ sung kiểm mâu thuẫn mức luật cho `quan` (N3-04) và các trường mở rộng v1.1 (`day`, `monsters`, `age_ticks`).
 """
 
 import json
 import math
 
+from .contract import compute_plan_ingredients
 from .errors import BadInput
-from .inventory import KINDS_P1, validate_items
+from .inventory import KINDS_V11, validate_items
 from .sim.quan_orders import validate_quan_scenario_block
 
-GATHER_KEYS = {"player", "hold", "nodes", "fish", "random_fish", "time_left_ticks"}
+GATHER_KEYS = {"player", "hold", "nodes", "fish", "random_fish", "time_left_ticks", "monsters"}
 GATHER_PLAYER_KEYS = {"pos", "vel", "heading_deg", "hp", "oxygen_ticks", "zero_oxy_ticks",
                       "invuln_ticks", "catch_cd_ticks"}
 NODE_KINDS = ("bong_dien_dien", "bong_sung", "keo_neo")
 FISH_KINDS = ("ca_linh", "ca_loc", "ca_keo")
+MONSTER_KEYS = {"id", "kind", "pos", "waypoints", "target_idx", "state", "state_ticks_left", "recoil_dir"}
+MONSTER_STATES = ("patrol", "chase", "recoil")
 QUAN_PLAYER_KEYS = {"pos", "vel"}
 QUAN_KEYS = {"player", "stock", "hand", "stoves", "tables", "customers", "random_customers",
              "reputation", "time_left_ticks"}
+DAY_KEYS = {"money", "earned", "reputation", "upgrades", "day_plan"}
 
 
 def _check_ids(name, arr):
@@ -34,6 +37,14 @@ def _check_ids(name, arr):
         seen.add(e["id"])
 
 
+def _check_time_left(block, mode_key, tuning):
+    dur = int(round(tuning[mode_key]["duration_s"] * 60))
+    if "time_left_ticks" in block:
+        t = block["time_left_ticks"]
+        if isinstance(t, bool) or not isinstance(t, int) or not (1 <= t <= dur):
+            raise BadInput(f"time_left_ticks phải là số nguyên trong [1, {dur}]")
+
+
 def load_scenario(path, mode: str, tuning: dict) -> dict:
     if path is None:
         return {}
@@ -42,7 +53,47 @@ def load_scenario(path, mode: str, tuning: dict) -> dict:
             data = json.load(f)
     except (OSError, ValueError) as e:
         raise BadInput(f"không đọc được scenario {path}: {e}")
-    if not isinstance(data, dict) or not set(data) <= {"gather", "quan"}:
+    if not isinstance(data, dict):
+        raise BadInput("scenario phải là JSON object")
+
+    if mode == "day":
+        allowed_roots = {"day", "gather", "quan"}
+        extra_roots = set(data) - allowed_roots
+        if extra_roots:
+            raise BadInput(f"scenario day chỉ nhận các khối {sorted(allowed_roots)}, gặp: {sorted(extra_roots)}")
+        out = {}
+        day_block = data.get("day", {})
+        if not isinstance(day_block, dict):
+            raise BadInput("khối day phải là object")
+        _validate_day(day_block, tuning)
+        out["day"] = day_block
+
+        # Xác định giới hạn oxy/hp tối đa theo nâng cấp khởi đầu ở day.upgrades
+        init_up = day_block.get("upgrades", {})
+        if "gather" in data:
+            gb = data["gather"]
+            if not isinstance(gb, dict):
+                raise BadInput("khối gather phải là object")
+            extra = set(gb) - GATHER_KEYS
+            if extra:
+                raise BadInput(f"trường lạ/chưa hỗ trợ trong gather: {sorted(extra)}")
+            _check_time_left(gb, "gather", tuning)
+            _validate_gather(gb, tuning, active_upgrades=init_up)
+            out["gather"] = gb
+
+        if "quan" in data:
+            qb = data["quan"]
+            if not isinstance(qb, dict):
+                raise BadInput("khối quan phải là object")
+            extra = set(qb) - QUAN_KEYS
+            if extra:
+                raise BadInput(f"trường lạ/chưa hỗ trợ trong quan: {sorted(extra)}")
+            _check_time_left(qb, "quan", tuning)
+            _validate_quan(qb, tuning, in_day_mode=True)
+            out["quan"] = qb
+        return out
+
+    if not set(data) <= {"gather", "quan"}:
         raise BadInput("scenario chỉ được có khối 'gather' hoặc 'quan'")
     if set(data) - {mode}:
         raise BadInput(f"khối sai mode: chạy --mode {mode} chỉ nhận khối '{mode}'")
@@ -53,15 +104,11 @@ def load_scenario(path, mode: str, tuning: dict) -> dict:
     extra = set(block) - allowed
     if extra:
         raise BadInput(f"trường lạ/chưa hỗ trợ trong {mode}: {sorted(extra)}")
-    dur = int(round(tuning[mode]["duration_s"] * 60))
-    if "time_left_ticks" in block:
-        t = block["time_left_ticks"]
-        if isinstance(t, bool) or not isinstance(t, int) or not (1 <= t <= dur):
-            raise BadInput(f"time_left_ticks phải là số nguyên trong [1, {dur}]")
+    _check_time_left(block, mode, tuning)
     if mode == "gather":
         _validate_gather(block, tuning)
     else:
-        _validate_quan(block, tuning)
+        _validate_quan(block, tuning, in_day_mode=False)
     return block
 
 
@@ -80,20 +127,77 @@ def _pos(name, pos, bounds, axes=("x", "d")):
     for c, axis in zip(pos, axes):
         lo, hi = bounds[axis]
         if not (lo <= c <= hi):
-            raise BadInput(f"{name} nằm ngoài vùng nước ({axis} ∈ [{lo}, {hi}])")
+            raise BadInput(f"{name} nằm ngoài vùng ({axis} ∈ [{lo}, {hi}])")
 
 
-def _validate_gather(b, tuning):
+def _validate_day(b, tuning):
+    extra = set(b) - DAY_KEYS
+    if extra:
+        raise BadInput(f"trường lạ trong khối day: {sorted(extra)}")
+    has_money = "money" in b
+    has_earned = "earned" in b
+    money = b.get("money", 0)
+    earned = b.get("earned", 0)
+    if has_money:
+        _nonneg_int("day.money", money)
+    if has_earned:
+        _nonneg_int("day.earned", earned)
+    if has_money and money > 0 and not has_earned:
+        raise BadInput("day: phải khai cả earned khi có money đầu kỳ")
+    if money > earned:
+        raise BadInput("day: phải thỏa 0 <= money <= earned")
+    if "reputation" in b:
+        rep = b["reputation"]
+        lo, hi = tuning["quan"]["reputation_min"], tuning["quan"]["reputation_max"]
+        if not _num(rep) or not (lo <= rep <= hi):
+            raise BadInput(f"day.reputation phải nằm trong [{lo}, {hi}]")
+    if "upgrades" in b:
+        up = b["upgrades"]
+        if not isinstance(up, dict):
+            raise BadInput("day.upgrades phải là object")
+        shop_up = tuning.get("shop", {}).get("upgrades", {})
+        for k, lvl in up.items():
+            if k not in shop_up:
+                raise BadInput(f"day.upgrades: nâng cấp không hợp lệ: {k!r}")
+            if isinstance(lvl, bool) or not isinstance(lvl, int) or not (0 <= lvl <= len(shop_up[k])):
+                raise BadInput(f"day.upgrades.{k}: cấp phải trong [0, {len(shop_up[k])}]")
+    if "day_plan" in b:
+        plans = b["day_plan"]
+        if not isinstance(plans, list):
+            raise BadInput("day.day_plan phải là mảng")
+        seen = set()
+        for item in plans:
+            if not isinstance(item, dict):
+                raise BadInput("mỗi mục trong day.day_plan phải là object")
+            d = item.get("day")
+            if isinstance(d, bool) or not isinstance(d, int) or not (1 <= d <= 5) or d in seen:
+                raise BadInput(f"day.day_plan: số ngày không hợp lệ hoặc trùng ({d!r})")
+            seen.add(d)
+            expected = compute_plan_ingredients(item.get("dishes"), tuning["menu"])
+            if "ingredients" in item and item["ingredients"] != expected:
+                raise BadInput(f"day.day_plan ngày {d}: ingredients không khớp tổng công thức")
+
+
+def _validate_gather(b, tuning, active_upgrades=None):
     g = tuning["gather"]
     bounds = g["bounds"]
-    for arr in ("nodes", "fish"):
+    up = active_upgrades or {}
+    shop_up = tuning.get("shop", {}).get("upgrades", {})
+    oxy_max_s = g["oxygen_max_s"]
+    hp_max = g["hp_max"]
+    if up.get("oxygen", 0) > 0 and "oxygen" in shop_up:
+        oxy_max_s = shop_up["oxygen"][up["oxygen"] - 1]["oxygen_max_s"]
+    if up.get("hp", 0) > 0 and "hp" in shop_up:
+        hp_max = shop_up["hp"][up["hp"] - 1]["hp_max"]
+
+    for arr in ("nodes", "fish", "monsters"):
         if arr in b:
             _check_ids(arr, b[arr])
     if "random_fish" in b and not isinstance(b["random_fish"], bool):
         raise BadInput("random_fish phải là boolean")
     if "hold" in b:
         h = b["hold"]
-        if not isinstance(h, list) or any(k not in KINDS_P1 for k in h):
+        if not isinstance(h, list) or any(k not in KINDS_V11 for k in h):
             raise BadInput("hold phải là mảng id nguyên liệu hợp lệ")
         if len(h) > g["hold_capacity"]:
             raise BadInput("hold vượt sức chứa")
@@ -112,10 +216,10 @@ def _validate_gather(b, tuning):
     for key in ("invuln_ticks", "catch_cd_ticks", "zero_oxy_ticks", "oxygen_ticks", "hp"):
         if key in p:
             _nonneg_int(f"player.{key}", p[key])
-    omax = int(round(g["oxygen_max_s"] * 60))
+    omax = int(round(oxy_max_s * 60))
     if "oxygen_ticks" in p and p["oxygen_ticks"] > omax:
         raise BadInput("player.oxygen_ticks vượt oxy tối đa")
-    if "hp" in p and not (1 <= p["hp"] <= g["hp_max"]):
+    if "hp" in p and not (1 <= p["hp"] <= hp_max):
         raise BadInput("player.hp phải trong [1, hp_max]")
     if "zero_oxy_ticks" in p:
         pos = p.get("pos", g["start_pos"])
@@ -140,9 +244,47 @@ def _validate_gather(b, tuning):
             raise BadInput(f"fish.{f['id']}: đàn cá phải ở dưới nước")
         if "heading_deg" in f and not _num(f["heading_deg"]):
             raise BadInput(f"fish.{f['id']}.heading_deg phải là số")
+        if "age_ticks" in f:
+            _nonneg_int(f"fish.{f['id']}.age_ticks", f["age_ticks"])
+    species_map = g.get("monsters", {}).get("species", {})
+    for m in b.get("monsters", []):
+        extra_m = set(m) - MONSTER_KEYS
+        if extra_m:
+            raise BadInput(f"monsters.{m['id']}: trường lạ {sorted(extra_m)}")
+        kind = m.get("kind")
+        if kind not in species_map:
+            raise BadInput(f"monsters.{m['id']}: kind không hợp lệ ({kind!r})")
+        d_lo, d_hi = species_map[kind]["depths"]
+        _pos(f"monsters.{m['id']}.pos", m.get("pos"), bounds)
+        if not (d_lo <= m["pos"][1] <= d_hi):
+            raise BadInput(f"monsters.{m['id']}.pos nằm ngoài dải độ sâu [{d_lo}, {d_hi}]")
+        wps = m.get("waypoints")
+        if not isinstance(wps, list) or len(wps) != 2:
+            raise BadInput(f"monsters.{m['id']}.waypoints phải gồm đúng 2 điểm")
+        for idx, wp in enumerate(wps):
+            _pos(f"monsters.{m['id']}.waypoints[{idx}]", wp, bounds)
+            if not (d_lo <= wp[1] <= d_hi):
+                raise BadInput(f"monsters.{m['id']}.waypoints[{idx}] ngoài dải độ sâu [{d_lo}, {d_hi}]")
+        tidx = m.get("target_idx", 1)
+        if isinstance(tidx, bool) or tidx not in (0, 1):
+            raise BadInput(f"monsters.{m['id']}.target_idx phải là 0 hoặc 1")
+        state = m.get("state", "patrol")
+        if state not in MONSTER_STATES:
+            raise BadInput(f"monsters.{m['id']}.state không hợp lệ ({state!r})")
+        st_left = m.get("state_ticks_left", 0)
+        _nonneg_int(f"monsters.{m['id']}.state_ticks_left", st_left)
+        rdir = m.get("recoil_dir")
+        if state == "recoil":
+            if st_left <= 0:
+                raise BadInput(f"monsters.{m['id']}: state recoil phải có state_ticks_left > 0")
+            if not (isinstance(rdir, list) and len(rdir) == 2 and all(_num(c) for c in rdir) and abs(math.hypot(*rdir) - 1.0) <= 0.05):
+                raise BadInput(f"monsters.{m['id']}: state recoil cần recoil_dir là vector đơn vị")
+        else:
+            if st_left != 0 or rdir is not None:
+                raise BadInput(f"monsters.{m['id']}: state {state} phải có state_ticks_left=0 và recoil_dir=null")
 
 
-def _validate_quan(b, tuning):
+def _validate_quan(b, tuning, in_day_mode: bool = False):
     for arr in ("stoves", "tables", "customers"):
         if arr in b:
             _check_ids(arr, b[arr])
@@ -156,4 +298,4 @@ def _validate_quan(b, tuning):
         _pos("player.pos", p["pos"], qb, axes=("x", "z"))
     if "vel" in p and not (isinstance(p["vel"], list) and len(p["vel"]) == 2 and all(_num(c) for c in p["vel"])):
         raise BadInput("player.vel phải là [x, z]")
-    validate_quan_scenario_block(b, tuning)
+    validate_quan_scenario_block(b, tuning, in_day_mode=in_day_mode)
