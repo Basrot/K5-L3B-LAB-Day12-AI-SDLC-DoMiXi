@@ -208,7 +208,10 @@ class LiveQuanSim(Reservations, QuanSim):
                         reservation = next(r for r in self.reservations if r['id'] == customer['reservation_id'])
                         self._fail_reservation(reservation, 'burnt', events)
                     else:
-                        st.update(state='idle', dish=None, customer_id=None)
+                        st.update(state='idle', dish=None, customer_id=None, ready_ticks=0)
+                        if customer:
+                            customer['state'] = 'waiting'
+                            customer['order_status'] = 'unfulfillable'
         for c in sort_by_id(list(self.customers)):
             if c['state'] == 'eating':
                 c['eat_ticks_left'] -= 1
@@ -559,7 +562,10 @@ class LiveQuanSim(Reservations, QuanSim):
                 target.update(state='idle', dish=None, customer_id=None)
                 events.append(('dish_picked', dict(self.hand)))
             elif target['state'] == 'idle':
-                waiting = [c for c in sort_by_id(self.customers) if c['state'] == 'waiting' and c.get('reserved_ids')]
+                waiting = sorted(
+                    [c for c in self.customers if c['state'] == 'waiting' and c.get('reserved_ids')],
+                    key=lambda c: (c.get('order_tick', 0), id_key(c['table_id'])),
+                )
                 if waiting:
                     c = waiting[0]
                     selected = [i for i in self.fresh_items if i['id'] in c['reserved_ids']]
@@ -569,7 +575,11 @@ class LiveQuanSim(Reservations, QuanSim):
                     self.fresh_items = [i for i in self.fresh_items if i['id'] not in c['reserved_ids']]
                     c['reserved_ids'] = []
                     for kind, count in c['reserved'].items():
-                        self.stock[kind] -= count
+                        left = max(0, self.stock.get(kind, 0) - count)
+                        if left > 0:
+                            self.stock[kind] = left
+                        else:
+                            self.stock.pop(kind, None)
                     c['reserved'] = {}
                     c['state'] = 'assigned'
                     target.update(state='cooking', dish=c['dish_id'], customer_id=c['id'],

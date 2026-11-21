@@ -2,6 +2,8 @@
 
 import json
 import io
+import os
+import tempfile
 import time
 import unittest
 import urllib.error
@@ -9,6 +11,7 @@ import urllib.request
 from unittest.mock import patch
 
 from chonoi.contract import load_contract
+from chonoi.inventory import read_inventory
 from chonoi.live import LiveGame, LiveServer, main
 
 
@@ -69,6 +72,23 @@ class LiveServerTest(unittest.TestCase):
             server.stop()
         self.assertFalse(server.game._thread.is_alive())
         self.assertFalse(server._thread.is_alive())
+
+    def test_live_gather_inventory_out_writes_valid_v12_and_loads_in_quan(self):
+        """Xuất --inventory-out từ bản live phải ghi đúng schema kho cá thể v1.2 (lọc nguyên liệu ngoài contract)."""
+        tuning = load_contract()["tuning"]
+        with tempfile.TemporaryDirectory() as d:
+            inv_path = os.path.join(d, "live_catch.json")
+            lg = LiveGame("gather", tuning, {}, 1, inventory_out=inv_path)
+            lg.session.sim.hold = ["ca_loc", "ca_ro"]
+            lg.inputs.set(interact=True)
+            lg._tick_once()
+            self.assertTrue(os.path.exists(inv_path))
+            items = read_inventory(inv_path)
+            self.assertEqual([it["kind"] for it in items], ["ca_loc"])
+            lq = LiveGame("quan", tuning, {}, 1, inventory=items)
+            lq._tick_once()
+            self.assertIsNone(lq.error)
+            self.assertEqual(lq.session.sim.stock, {"ca_loc": 1})
 
 
 if __name__ == "__main__":

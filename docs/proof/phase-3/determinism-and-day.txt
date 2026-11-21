@@ -1,20 +1,12 @@
-# Bằng chứng tất định byte-từng-byte & hiệu năng Phase 3 (Contract v1.2)
+# Bằng chứng tất định byte-từng-byte, hiệu năng & check_team Phase 3 (Contract v1.2)
 
-mode=gather BYTE_IDENTICAL=True bytes=73821 elapsed_s=0.380
+mode=gather BYTE_IDENTICAL=True bytes=73821 elapsed_s=0.398
   end={"type":"end","ticks":400,"sim_tick":400,"mode":"gather","state":"playing","reason":"tick_limit","money":0,"earned":0,"reputation":3.0,"score":300}
-mode=quan BYTE_IDENTICAL=True bytes=27202 elapsed_s=0.284
+mode=quan BYTE_IDENTICAL=True bytes=27202 elapsed_s=0.277
   end={"type":"end","ticks":400,"sim_tick":400,"mode":"quan","state":"playing","reason":"tick_limit","money":0,"earned":0,"reputation":3.0,"score":300}
-mode=day BYTE_IDENTICAL=True bytes=37951 elapsed_s=1.603
+mode=day BYTE_IDENTICAL=True bytes=37951 elapsed_s=1.282
   end={"type":"end","ticks":22200,"sim_tick":22200,"mode":"day","state":"finished","reason":"days_complete","money":0,"earned":0,"reputation":3.0,"score":300,"days_completed":1}
 
-## Kiểm tra tools/check_team.py (trung thực)
-exit_code=1
-output=KIỂM TRA DANH SÁCH THÀNH VIÊN KHÔNG ĐẠT:
-  - thành viên #1: GitHub handle chưa điền hoặc không hợp lệ ('')
-  - thành viên #1: thiếu tên
-  - thành viên #2: GitHub handle chưa điền hoặc không hợp lệ ('')
-  - thành viên #2: thiếu tên
-  - thành viên #3: GitHub handle chưa điền hoặc không hợp lệ ('')
-  - thành viên #3: thiếu tên
-  - thành viên #4: GitHub handle chưa điền hoặc không hợp lệ ('')
-  - thành viên #4: thiếu tên
+## Kiểm tra tools/check_team.py
+exit_code=0
+output=OK: 4 thành viên: Basrot, BFNGOC2, daongochan, DucTai2804

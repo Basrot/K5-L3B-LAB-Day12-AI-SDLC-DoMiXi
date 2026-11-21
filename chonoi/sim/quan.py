@@ -173,8 +173,8 @@ class QuanSim:
         tick_customer_timers(self.customers)
 
         # 2. Hao tươi kho thô (kể cả hàng đang giữ chỗ), phát HẾT `spoiled` theo id rồi mới xử lý giữ chỗ bị ươn.
-        decay_items(self.stock, self.fresh_cfg["quan_decay_per_s"], spoiled_below, "stock", events)
-        re_reserve_after_spoil(self.stock, self.customers, self.menu, spoiled_below=spoiled_below)
+        if decay_items(self.stock, self.fresh_cfg["quan_decay_per_s"], spoiled_below, "stock", events):
+            re_reserve_after_spoil(self.stock, self.customers, self.menu, spoiled_below=spoiled_below)
 
         # 3. Xét bếp theo id: món nấu xong chuyển ready (ready_ticks = 0, phát dish_ready).
         for st in sort_by_id(self.stoves):

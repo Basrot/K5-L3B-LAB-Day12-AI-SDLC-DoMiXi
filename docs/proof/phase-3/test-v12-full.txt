@@ -1,9 +1,11 @@
-# Lệnh: python tools/test_windows.py (sau khi gộp origin/main 2ceb34b)
-# Thời điểm: 2026-11-21 (Phase 3 — Contract v1.2)
+# Lệnh: python tools/test_windows.py
+# Thời điểm: 2026-11-21 (Phase 3 — Contract v1.2, trước khi gắn tag phase-3)
 
+OK: 4 thành viên: Basrot, BFNGOC2, daongochan, DucTai2804
 test_cannot_equip_unowned_level (test_campaign_flow.CampaignFlowTest.test_cannot_equip_unowned_level) ... ok
 test_equipped_upgrades_apply_to_morning (test_campaign_flow.CampaignFlowTest.test_equipped_upgrades_apply_to_morning) ... ok
 test_intro_equipment_morning_evening_results_shop (test_campaign_flow.CampaignFlowTest.test_intro_equipment_morning_evening_results_shop) ... ok
+test_lobby_resume_and_replay_intro_preserve_session (test_campaign_flow.CampaignFlowTest.test_lobby_resume_and_replay_intro_preserve_session) ... ok
 test_remove_lamp_and_slow_fish_reflection (test_campaign_flow.CampaignFlowTest.test_remove_lamp_and_slow_fish_reflection) ... ok
 test_catch_underwater_and_cooldown (test_diving.DivingTest.test_catch_underwater_and_cooldown) ... ok
 test_faint_loses_hold (test_diving.DivingTest.test_faint_loses_hold) ... ok
@@ -11,6 +13,8 @@ test_headless_has_no_live_collectibles (test_diving.DivingTest.test_headless_has
 test_live_pickup_capacity_and_range (test_diving.DivingTest.test_live_pickup_capacity_and_range) ... ok
 test_live_pickup_once_and_restart (test_diving.DivingTest.test_live_pickup_once_and_restart) ... ok
 test_oxygen_underwater_and_refill (test_diving.DivingTest.test_oxygen_underwater_and_refill) ... ok
+test_live_gather_inventory_out_writes_valid_v12_and_loads_in_quan (test_live.LiveServerTest.test_live_gather_inventory_out_writes_valid_v12_and_loads_in_quan)
+Xuất --inventory-out từ bản live phải ghi đúng schema kho cá thể v1.2 (lọc nguyên liệu ngoài contract). ... ok
 test_main_starts_with_windows_legacy_console_encoding (test_live.LiveServerTest.test_main_starts_with_windows_legacy_console_encoding) ... ok
 test_state_input_and_clean_stop (test_live.LiveServerTest.test_state_input_and_clean_stop) ... ok
 test_catching_poison_fish_does_not_add_it_to_inventory (test_live_world.LiveWorldTest.test_catching_poison_fish_does_not_add_it_to_inventory) ... ok
@@ -109,6 +113,7 @@ test_khoi_sai_mode_exit_2 (test_smoke_p1.ScenarioModes.test_khoi_sai_mode_exit_2
 test_quan_fixture_khong_hop_le_exit_2 (test_smoke_p1.ScenarioModes.test_quan_fixture_khong_hop_le_exit_2) ... ok
 test_quan_player_vel_hop_le (test_smoke_p1.ScenarioModes.test_quan_player_vel_hop_le) ... ok
 test_good (test_team_check.TeamCheck.test_good) ... ok
+test_repo_team_md_is_valid (test_team_check.TeamCheck.test_repo_team_md_is_valid) ... ok
 test_template_is_rejected (test_team_check.TeamCheck.test_template_is_rejected) ... ok
 test_too_few_members (test_team_check.TeamCheck.test_too_few_members) ... ok
 test_wrong_size_duplicate_and_outsider (test_team_check.TeamCheck.test_wrong_size_duplicate_and_outsider) ... ok
@@ -146,6 +151,6 @@ test_ticket03_exact_threshold_30_spoil_once_in_gather (test_v12_freshness.Ticket
 Fixture mẫu nguyên văn từ TICKET-03: fresh=30 ở gather -> phát spoiled đúng tick 1 và KHÔNG lặp tick 2. ... ok
 
 ----------------------------------------------------------------------
-Ran 102 tests in 35.362s
+Ran 105 tests in 39.597s
 
 OK

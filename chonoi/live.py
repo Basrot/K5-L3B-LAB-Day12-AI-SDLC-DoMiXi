@@ -21,16 +21,17 @@ import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from fractions import Fraction
 from .contract import load_contract
 from .errors import BadInput
+from .freshness_v12 import get_freshness_cfg
 from .inputs import LiveInputs
-from .inventory import read_inventory
+from .inventory import KINDS_V11, hold_to_items, read_inventory, write_inventory
 from .runner import Session
 from .scenario import load_scenario
 from .sim.live_gather import LiveGatherSim
 from .sim.live_quan import LiveQuanSim
 from .live_world import live_tuning
-from .inventory import hold_to_items
 from .progression import load_progression, settle_day, buy_upgrade
 from pathlib import Path
 from urllib.parse import unquote
@@ -130,7 +131,21 @@ class LiveGame:
                     self.screen = 'results'
             if self.inventory_out:
                 try:
-                    s.write_inventory_if_done(self.inventory_out)
+                    if self.mode == "gather" and hasattr(s.sim, "fresh_items"):
+                        scale = max(1, s.sim.world["freshness"]["maximum"] // 100)
+                        v12_items = [
+                            {
+                                "id": it["id"],
+                                "kind": it["kind"],
+                                "fresh": Fraction(it["fresh_units"], scale),
+                            }
+                            for it in s.sim.fresh_items
+                            if it["kind"] in KINDS_V11
+                        ]
+                        spoiled_below = get_freshness_cfg(self.tuning)["spoiled_below"]
+                        write_inventory(self.inventory_out, v12_items, spoiled_below=spoiled_below)
+                    else:
+                        s.write_inventory_if_done(self.inventory_out)
                 except OSError as e:
                     sys.stderr.write(f"lỗi ghi kho: {e}\n")
 

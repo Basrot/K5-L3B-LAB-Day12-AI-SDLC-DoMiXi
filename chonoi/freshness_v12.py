@@ -114,21 +114,57 @@ def is_spoiled(item: dict, spoiled_below=30) -> bool:
     return to_fraction(item["fresh"]) < to_fraction(spoiled_below)
 
 
-def decay_items(items: list, decay_per_s, spoiled_below, location: str, events: list):
-    """Hao tươi toàn bộ cá thể trong `items` 1 tick (duyệt theo id).
+_FRAC_CACHE = {}
 
-    Phát `spoiled` đúng 1 lần khi đi từ `>= spoiled_below` xuống `< spoiled_below` (so trước làm tròn).
+
+def _cached_fraction(val) -> Fraction:
+    if isinstance(val, Fraction):
+        return val
+    cached = _FRAC_CACHE.get(val)
+    if cached is None:
+        cached = to_fraction(val)
+        _FRAC_CACHE[val] = cached
+    return cached
+
+
+_STEP_DECAY_CACHE = {}
+
+
+def decay_items(items: list, decay_per_s, spoiled_below, location: str, events: list) -> bool:
+    """Hao tươi toàn bộ cá thể trong `items` 1 tick. Trả `True` nếu có ít nhất 1 cá thể vừa vượt ngưỡng ươn.
+
+    Phát `spoiled` đúng 1 lần theo thứ tự `id` khi đi từ `>= spoiled_below` xuống `< spoiled_below` (so trước làm tròn).
     """
-    step_decay = to_fraction(decay_per_s) / 60
-    thresh = to_fraction(spoiled_below)
-    for it in sort_by_id(items):
-        before = to_fraction(it["fresh"])
+    if not items:
+        return False
+    step_decay = _STEP_DECAY_CACHE.get(decay_per_s)
+    if step_decay is None:
+        step_decay = _cached_fraction(decay_per_s) / 60
+        _STEP_DECAY_CACHE[decay_per_s] = step_decay
+    thresh = _cached_fraction(spoiled_below)
+    zero = Fraction(0)
+    spoiled_now = None
+    for it in items:
+        before = it["fresh"]
+        if not isinstance(before, Fraction):
+            before = to_fraction(before)
+        if before <= zero:
+            it["fresh"] = zero
+            continue
         after = before - step_decay
-        if after < 0:
-            after = Fraction(0)
+        if after < zero:
+            after = zero
         it["fresh"] = after
         if before >= thresh and after < thresh:
+            if spoiled_now is None:
+                spoiled_now = [it]
+            else:
+                spoiled_now.append(it)
+    if spoiled_now is not None:
+        for it in sort_by_id(spoiled_now):
             events.append(("spoiled", {"item_id": it["id"], "kind": it["kind"], "location": location}))
+        return True
+    return False
 
 
 def compute_fresh_price(list_price: int, used_items: list) -> int:
