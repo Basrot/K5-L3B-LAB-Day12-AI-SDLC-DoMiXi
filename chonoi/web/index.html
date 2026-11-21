@@ -15,7 +15,7 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<nav aria-label="Chọn cảnh"><button data-mode="gather">☀ Sông</button><button data-mode="quan">♨ Quán · đem giỏ vào</button><button data-mode="quan" data-demo="true">Quán mẫu</button></nav>
+<nav aria-label="Chọn cảnh"><button data-mode="gather">☀ Sông</button><button data-mode="quan">♨ Quán · đem giỏ vào</button><button data-mode="quan" data-demo="true">Quán mẫu</button><button id="sound-toggle" aria-pressed="false">🔇 Âm thanh</button></nav>
 <script>
 "use strict";
 /*
@@ -26,6 +26,48 @@
 const cv = document.getElementById("c");
 const ctx = cv.getContext("2d");
 let snap = null, offline = false;
+let audioContext = null, soundEnabled = false, lastSoundEvent = '';
+const soundButton = document.getElementById('sound-toggle');
+soundButton.addEventListener('click', async () => {
+  soundEnabled = !soundEnabled;
+  if (soundEnabled && !audioContext) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) audioContext = new AudioCtx(); else soundEnabled = false;
+  }
+  if (soundEnabled && audioContext.state === 'suspended') await audioContext.resume();
+  soundButton.textContent = soundEnabled ? '🔊 Âm thanh' : '🔇 Âm thanh';
+  soundButton.setAttribute('aria-pressed', String(soundEnabled));
+  if (soundEnabled) playCue('water');
+});
+function playCue(kind) {
+  if (!soundEnabled || !audioContext) return;
+  const now = audioContext.currentTime;
+  const notes = kind === 'water' ? [[310,.08,'sine'],[240,.11,'sine']]
+    : kind === 'cooking' ? [[180,.1,'triangle'],[250,.14,'triangle']]
+    : kind === 'ready' ? [[660,.12,'sine'],[880,.2,'sine']]
+    : kind === 'served' ? [[520,.1,'sine'],[690,.1,'sine'],[820,.22,'sine']]
+    : kind === 'rain' ? [[260,.13,'triangle'],[190,.2,'triangle']]
+    : [[420,.12,'sine'],[580,.18,'sine']];
+  notes.forEach(([hz,duration,type],i)=>{
+    const osc=audioContext.createOscillator(),gain=audioContext.createGain();
+    osc.type=type;osc.frequency.setValueAtTime(hz,now+i*.075);
+    gain.gain.setValueAtTime(.0001,now+i*.075);gain.gain.exponentialRampToValueAtTime(.075,now+i*.075+.018);
+    gain.gain.exponentialRampToValueAtTime(.0001,now+i*.075+duration);
+    osc.connect(gain);gain.connect(audioContext.destination);osc.start(now+i*.075);osc.stop(now+i*.075+duration+.01);
+  });
+}
+function hearEvents(events) {
+  for(const e of events||[]) {
+    const key=`${String(e.tick).padStart(8,'0')}:${e.name}:${e.data?.order_id||e.data?.fish_id||''}`;
+    if(key<=lastSoundEvent)continue;
+    lastSoundEvent=key;
+    if(e.name==='dive'||e.name==='surface'||e.name==='fish_caught'||e.name==='treasure_picked')playCue('water');
+    else if(e.name==='weather_changed'&&e.data?.weather==='rain')playCue('rain');
+    else if(e.name==='cook_started')playCue('cooking');
+    else if(e.name==='dish_ready'||e.name==='dish_picked')playCue('ready');
+    else if(e.name==='served'||e.name==='paid')playCue('served');
+  }
+}
 const riverArt = new Image(); riverArt.src = '/art/04-river-scene.png';
 const diveArt = new Image(); diveArt.src = '/art/10-underwater-animation.png';
 const surfaceArt = new Image(); surfaceArt.src = '/art/01-ut-sen.png';
@@ -72,7 +114,7 @@ document.querySelectorAll('[data-mode]').forEach(button => button.addEventListen
   down.clear(); queue.length=0;
   await fetch('/input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({move:[0,0],interact:false,catch:false})});
   await fetch('/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:button.dataset.mode,demo:button.dataset.demo==='true'})});
-  lastSent=''; button.blur();
+  lastSent='';lastSoundEvent=''; button.blur();
 }));
 async function flush() {
   if (inflight) return;
@@ -91,7 +133,7 @@ addEventListener("keydown", (e) => {
   if (MOVE_KEYS[k]) { down.add(MOVE_KEYS[k]); e.preventDefault(); }
   else if (k === "e") down.add("interact");
   else if (k === " ") { down.add("catch"); e.preventDefault(); }
-  else if (k === "r") { fetch("/restart", { method: "POST" }); lastSent = ""; down.clear(); }
+  else if (k === "r") { fetch("/restart", { method: "POST" }); lastSent = "";lastSoundEvent=''; down.clear(); }
   pushInput();
 });
 addEventListener("keyup", (e) => {
@@ -108,6 +150,7 @@ async function poll() {
   try {
     const r = await fetch("/state", { cache: "no-store" });
     snap = await r.json();
+    hearEvents(snap.events);
     offline = false;
   } catch (e) { offline = true; }
   setTimeout(poll, 16);
@@ -336,9 +379,13 @@ function drawQuan(w, h) {
     if (c) {
       const cx = tx, cy = ty - 1.0 * s;
       const drinking=c.state==='eating' && c.eat_ticks_left < (meta.eat_s||10)*30;
-      const bob=c.state==='eating'?Math.sin(snap.tick/8)*2:0;
-      if(c.state==='eating')sprite(diningArt,c.sprite||0,drinking?1:0,4,2,cx,cy+bob,1.8*s);
-      else sprite(propsArt,c.sprite||0,3,4,4,cx,cy,1.8*s);
+      const served=(snap.events||[]).some(e=>e.name==='served'&&e.data?.order_id===c.id&&snap.tick-e.tick<90);
+      const eating=c.state==='eating';
+      const bob=eating?Math.sin(snap.tick/7)*3:served?Math.sin(snap.tick/3)*5:Math.sin(snap.tick/18)*1.5;
+      const bite=eating && !drinking && Math.floor(snap.tick/18)%2===0;
+      if(eating)sprite(diningArt,c.sprite||0,drinking?1:0,4,2,cx,cy+bob,1.8*s, false, bite?-.035:.02);
+      else sprite(propsArt,c.sprite||0,3,4,4,cx,cy+bob,1.8*s, false, served?-.045:0);
+      if(served){ctx.fillStyle='#ffd45c';ctx.font=`${Math.max(12,Math.min(20,s*.6))}px system-ui`;ctx.textAlign='center';ctx.fillText('✦',cx+s*.58,cy-s*.52+bob);}
       text((c.label||c.id)+' · '+(c.state==='eating'?(drinking?'Uống '+c.drink:'Đang ăn'):c.state==='assigned'?'Chờ bếp':'Gọi món'),cx,cy-1.0*s,{size:11,align:'center',color:'#31200c'});
       text(dishName(c.dish_id),cx,ty+1.4*s,{size:11,align:'center',color:'#49301b'});
       if(c.state==='eating'){
