@@ -1,17 +1,17 @@
 # AGENTS.md — hướng dẫn chung cho mọi agent AI của nhóm
 
-> Cập nhật qua các phase: Phase 1 (khởi tạo + live animation Windows) → Phase 2 (Contract v1.1: `gather` cá bơi/sinh/Cá Sấu, `quan` 2 bếp/4 bàn/6 món, `--mode day`/Shop/`pause`, và 2 skill kiểm chứng). Ngắn gọn, có lệnh chạy thật.
+> Cập nhật qua các phase: Phase 1 (khởi tạo + live animation Windows) → Phase 2 (Contract v1.1: `gather` cá bơi/sinh/Cá Sấu, `quan` 2 bếp/4 bàn/6 món, `--mode day`/Shop/`pause`, 2 skill kiểm chứng) → Phase 3 (Contract v1.2: kho cá thể `{id, kind, fresh}`, độ tươi chính xác bằng `Fraction`, `spoiled`, giữ chỗ theo id & chốt giá theo tươi). Ngắn gọn, có lệnh chạy thật.
 
 ## Lệnh
 - Test (Linux/macOS): `PYTHONPATH=tests:. python3 -m unittest discover -s tests -v`
 - Test (Windows): `python tools/test_windows.py`
 - Kiểm thành viên: `python tools/check_team.py` (hoặc `python3 tools/check_team.py`)
-- Headless v1.1: `python -m chonoi.headless --mode gather|quan|day --seed 1 [--days 1..5] --ticks 600 --out out.jsonl`
+- Headless v1.2: `python -m chonoi.headless --mode gather|quan|day --seed 1 [--days 1..5] --ticks 600 --out out.jsonl`
 - Chơi thử trên trình duyệt (Windows): `python -X utf8 -m chonoi.live --mode gather|quan [--port 8080]` (WASD, E, Space, R)
 
 ## Cấu trúc & quy ước
-- Khung kỹ thuật: `chonoi/{headless,inputs,scenario,contract,rng,ids,jsonl,inventory,runner,live}.py` và `chonoi/web/`. Hạn chế sửa; mọi thay đổi ở starter (ví dụ nâng cấp Contract v1.1 trên `contract.py`, `inventory.py`, `scenario.py`, `inputs.py`, `runner.py`, `headless.py`) phải ghi rõ lý do trong commit và `docs/clarify.md`.
-- Luật chơi lõi (headless): `chonoi/sim/gather.py`, `chonoi/sim/quan.py`, `chonoi/sim/quan_orders.py`, `chonoi/sim/day.py`.
+- Khung kỹ thuật: `chonoi/{headless,inputs,scenario,contract,rng,ids,jsonl,inventory,runner,live,freshness_v12}.py` và `chonoi/web/`. Hạn chế sửa; mọi thay đổi ở starter (ví dụ nâng cấp Contract v1.1/v1.2 trên `contract.py`, `inventory.py`, `scenario.py`, `inputs.py`, `runner.py`, `headless.py`) phải ghi rõ lý do trong commit, `CHANGELOG.md` và `docs/clarify.md`.
+- Luật chơi lõi (headless): `chonoi/sim/gather.py`, `chonoi/sim/quan.py`, `chonoi/sim/quan_orders.py`, `chonoi/sim/day.py`, `chonoi/freshness_v12.py`.
 - Phần sáng tạo **chỉ dùng ở bản live** (tắt hoàn toàn ở headless): `chonoi/sim/live_gather.py`, `chonoi/sim/live_quan.py`, `chonoi/live_gather.json`, `chonoi/live_world.json`, `chonoi/live_world.py`.
 - **Số liệu chỉ đọc từ `game.contract.json` / dữ liệu**, không hard-code trong luật.
 - Mọi số ngẫu nhiên đi qua `Streams` (`chonoi/rng.py`); không dùng `random` toàn cục, không dùng đồng hồ hệ thống.

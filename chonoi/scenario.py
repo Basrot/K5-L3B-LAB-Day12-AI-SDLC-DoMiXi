@@ -1,7 +1,8 @@
-"""Nạp và kiểm scenario (Contract D v1.0 / v1.1).
+"""Nạp và kiểm scenario (Contract D v1.2).
 
 Trả về dict của khối tương ứng (`gather`/`quan`), hoặc dict chứa `{day, gather, quan}` khi chạy `--mode day`.
-Đã bổ sung kiểm mâu thuẫn mức luật cho `quan` (N3-04) và các trường mở rộng v1.1 (`day`, `monsters`, `age_ticks`).
+Kiểm kho cá thể v1.2 (`gather.hold`, `quan.stock`), giữ chỗ theo id cá thể (`customers[].reserved`),
+mâu thuẫn mức luật và các trường mở rộng v1.1/v1.2 (`day`, `monsters`, `age_ticks`, `freshness`).
 """
 
 import json
@@ -9,6 +10,7 @@ import math
 
 from .contract import compute_plan_ingredients
 from .errors import BadInput
+from .freshness_v12 import parse_item_list
 from .inventory import KINDS_V11, validate_items
 from .sim.quan_orders import validate_quan_scenario_block
 
@@ -196,9 +198,7 @@ def _validate_gather(b, tuning, active_upgrades=None):
     if "random_fish" in b and not isinstance(b["random_fish"], bool):
         raise BadInput("random_fish phải là boolean")
     if "hold" in b:
-        h = b["hold"]
-        if not isinstance(h, list) or any(k not in KINDS_V11 for k in h):
-            raise BadInput("hold phải là mảng id nguyên liệu hợp lệ")
+        h = parse_item_list(b["hold"], allowed_kinds=KINDS_V11, label="gather.hold")
         if len(h) > g["hold_capacity"]:
             raise BadInput("hold vượt sức chứa")
     p = b.get("player", {})

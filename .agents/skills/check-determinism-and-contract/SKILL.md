@@ -5,7 +5,7 @@ description: Kiểm tra tính tất định byte-từng-byte của headless trê
 
 # Check Determinism, Contract Isolation & Team Checklist
 
-Skill này đảm bảo mọi thay đổi mới (kể cả phần sáng tạo bản live) **không làm hỏng tính tất định** và **không phá Test Contract v1.1**.
+Skill này đảm bảo mọi thay đổi mới (kể cả phần sáng tạo bản live) **không làm hỏng tính tất định** và **không phá Test Contract v1.2**.
 
 ## Khi nào dùng
 - Sau khi sửa bất kỳ luật mô phỏng nào trong `chonoi/sim/*.py`, `chonoi/runner.py`, `chonoi/scenario.py`, hoặc `chonoi/live_world.py`.

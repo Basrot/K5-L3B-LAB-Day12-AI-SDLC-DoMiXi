@@ -1,7 +1,8 @@
-"""File kho v1.0 (Contract G): {"items": {id: số nguyên >= 0}}.
+"""File kho v1.2 (Contract G — kho cá thể có độ tươi):
+    {"items": [{"id": "I1", "kind": "ca_linh", "fresh": 100}, ...]}
 
-Đọc: từ chối sai schema / id lạ / số âm (BadInput -> mã 2).
-Ghi: bỏ mục bằng 0, qua file tạm cùng thư mục rồi thay thế, byte-ổn-định.
+Đọc: từ chối file kho đếm (dict), sai schema, kind lạ, id trùng, fresh ngoài [0, 100] (BadInput -> mã 2).
+Ghi: sắp theo id (`sort_by_id`), qua file tạm cùng thư mục rồi thay thế nguyên tử, byte-ổn-định.
 """
 
 import json
@@ -9,26 +10,18 @@ import os
 import tempfile
 
 from .errors import BadInput
+from .freshness_v12 import parse_item_list, serialize_items_sorted
 
 KINDS_V11 = ("ca_loc", "ca_linh", "ca_keo", "bong_dien_dien", "bong_sung", "keo_neo")
-KINDS_P1 = KINDS_V11  # giữ alias tương thích cho các module/test hiện có
+KINDS_P1 = KINDS_V11  # alias tương thích cho bản live
 
 
 def validate_items(items, kinds=KINDS_V11):
-    if not isinstance(items, dict):
-        raise BadInput("items phải là object")
-    out = {}
-    for k, v in items.items():
-        if k not in kinds:
-            raise BadInput(f"nguyên liệu lạ: {k}")
-        if isinstance(v, bool) or not isinstance(v, int) or v < 0:
-            raise BadInput(f"số lượng không hợp lệ cho {k}: {v!r}")
-        if v > 0:
-            out[k] = v
-    return out
+    """Kiểm mảng cá thể v1.2 `[{id, kind, fresh}]`; từ chối dict đếm với BadInput (mã 2)."""
+    return parse_item_list(items, allowed_kinds=kinds, label="items")
 
 
-def read_inventory(path: str, kinds=KINDS_P1) -> dict:
+def read_inventory(path: str, kinds=KINDS_V11) -> list:
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -36,24 +29,27 @@ def read_inventory(path: str, kinds=KINDS_P1) -> dict:
         raise BadInput(f"không đọc được file kho {path}: {e}")
     if not isinstance(data, dict) or set(data.keys()) != {"items"}:
         raise BadInput("file kho chỉ được có khóa gốc 'items'")
-    return validate_items(data["items"], kinds)
+    if not isinstance(data["items"], list):
+        raise BadInput("Contract v1.2 yêu cầu items là mảng cá thể [{id, kind, fresh}], không nhận kho đếm")
+    return parse_item_list(data["items"], allowed_kinds=kinds, label="items")
 
 
 def hold_to_items(hold: list) -> dict:
-    """Khoang (mảng id theo thứ tự nhặt) -> object đếm, sắp theo id nguyên liệu."""
+    """Tiện ích đếm (dùng riêng cho luồng chuyển kho bộ nhớ bản live)."""
     counts = {}
-    for k in hold:
+    for entry in hold:
+        k = entry["kind"] if isinstance(entry, dict) else entry
         counts[k] = counts.get(k, 0) + 1
     return {k: counts[k] for k in sorted(counts)}
 
 
-def write_inventory(path: str, items: dict):
-    items = {k: items[k] for k in sorted(items) if items[k] > 0}
+def write_inventory(path: str, items: list, spoiled_below=30):
+    payload = serialize_items_sorted(items, spoiled_below=spoiled_below)
     d = os.path.dirname(os.path.abspath(path))
     fd, tmp = tempfile.mkstemp(prefix=".inv-", suffix=".tmp", dir=d)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
-            json.dump({"items": items}, f, ensure_ascii=False, separators=(",", ":"))
+            json.dump({"items": payload}, f, ensure_ascii=False, separators=(",", ":"))
             f.write("\n")
         os.replace(tmp, path)
     except BaseException:

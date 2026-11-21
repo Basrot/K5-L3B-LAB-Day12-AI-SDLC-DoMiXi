@@ -1,12 +1,15 @@
-"""Vòng ngày (`--mode day`) và cửa hàng nâng cấp (`Shop`) theo Test Contract v1.1.
+"""Vòng ngày (`--mode day`) và cửa hàng nâng cấp (`Shop`) theo Test Contract v1.2.
 
 Luồng mỗi ngày: `gather` -> `quan` -> `shop` -> Ngày kế tiếp (hoặc kết thúc `days_complete` khi đóng Shop Ngày cuối).
   - Đổi pha diễn ra CÙNG tick: event kết thúc mang pha cũ, `phase_start` mang pha mới, snapshot ghi pha mới với `phase_tick: 0`.
+  - Bàn giao `gather -> quan` giữ nguyên cá thể `{id, kind, fresh(Fraction)}` (kể cả hàng ươn) và KHÔNG hao thêm.
+  - Hàng thô ở `Shop` giữ mảng cá thể theo id và KHÔNG hao tươi; bỏ khi đóng Shop.
+  - Ngày đầu giữ nguyên id trong `scenario.gather.hold`; Ngày 2+ cấp id mới `I<n>` theo thứ tự mảng.
   - Nâng cấp mua trong Shop (`upgrades`) hiển thị ngay và CHỈ sao sang `active_upgrades` khi dựng Ngày mới.
-  - Chi tiền mua trừ `money`, giữ nguyên `earned` và `score`. Kho dư bỏ sau khi đóng Shop.
 """
 
 from ..contract import compute_plan_ingredients
+from ..freshness_v12 import get_freshness_cfg, serialize_items_sorted
 from .gather import GatherSim
 from .quan import QuanSim
 
@@ -17,7 +20,8 @@ class ShopSim:
 
     def __init__(self, tuning, stock, money, earned, reputation, upgrades):
         self.t = tuning["shop"]
-        self.stock = {k: v for k, v in sorted(stock.items()) if v > 0}
+        self.spoiled_below = get_freshness_cfg(tuning)["spoiled_below"]
+        self.stock = [dict(it) for it in stock]
         self.money = int(money)
         self.earned = int(earned)
         self.reputation = float(reputation)
@@ -28,7 +32,7 @@ class ShopSim:
         self.reason = None
 
     def snapshot(self) -> dict:
-        return {"stock": dict(self.stock)}
+        return {"stock": serialize_items_sorted(self.stock, spoiled_below=self.spoiled_below)}
 
     def step(self, inp):
         events = []
@@ -145,6 +149,7 @@ class DaySim:
             initial_money=self.money,
             initial_earned=self.earned,
             initial_reputation=self.reputation,
+            realloc_hold_ids=(day_num > 1),
         )
         out_events.append((self.day, "gather", "day_start", {}))
         out_events.append((self.day, "gather", "day_plan", self.current_plan()))
@@ -159,7 +164,7 @@ class DaySim:
         return s
 
     def step(self, inp) -> list:
-        """Trả danh sách tuple `(day, phase, name, data)` để Session gắn vỏ event chuẩn v1.1."""
+        """Trả danh sách tuple `(day, phase, name, data)` để Session gắn vỏ event chuẩn v1.2."""
         cur_day = self.day
         cur_phase = self.sub.phase
         raw_events = self.sub.step(inp)
@@ -172,6 +177,7 @@ class DaySim:
             return out
 
         if cur_phase == "gather":
+            # Bàn giao nguyên cá thể + độ tươi (Fraction chính xác), không hao thêm ở tick chuyển pha
             inv = self.sub.inventory_items()
             quan_sc = self.scenario.get("quan", {})
             plan = self.day_plans[self.day]
@@ -191,7 +197,7 @@ class DaySim:
             self.money = self.sub.money
             self.earned = self.sub.earned
             self.reputation = self.sub.reputation
-            leftover = {k: v for k, v in self.sub.stock.items() if v > 0}
+            leftover = [dict(it) for it in self.sub.stock]
             self.sub = ShopSim(
                 self.tuning,
                 leftover,

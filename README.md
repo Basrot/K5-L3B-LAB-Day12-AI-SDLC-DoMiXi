@@ -1,6 +1,6 @@
 # Day 12 — AI SDLC: Quán Ăn Chợ Nổi (Nhóm DoMiXi)
 
-> **Làm theo nhóm 4 người** · Dùng AI để xây game 2D qua **4 phase** trong **3 giờ**: Út Sen lặn bắt cá, hái rau trên mặt nước, tối mở quán phục vụ khách và nâng cấp đồ nghề qua Shop theo vòng ngày (Test Contract **v1.1**).
+> **Làm theo nhóm 4 người** · Dùng AI để xây game 2D qua **4 phase** trong **3 giờ**: Út Sen lặn bắt cá, hái rau trên mặt nước, tối mở quán phục vụ khách và nâng cấp đồ nghề qua Shop theo vòng ngày (Test Contract **v1.2** — kho cá thể & độ tươi "Mùa Nước Nổi").
 > **Lab board:** **[Chợ Nổi Lab](https://claude.ai/artifact/E35v787wSx2wDgPTNhMVDg)**
 
 ## Bắt đầu nhanh (≤ 3 lệnh từ clone sạch)
@@ -18,7 +18,7 @@ python tools/test_windows.py                                        # chạy to�
 python -X utf8 -m chonoi.live --mode campaign --port 8080           # chơi thử tại http://127.0.0.1:8080/
 ```
 
-### Chạy Headless (Test Contract v1.1)
+### Chạy Headless (Test Contract v1.2)
 ```bash
 python3 -m chonoi.headless --mode gather --seed 1 --ticks 600 --out gather.jsonl --inventory-out catch.json
 python3 -m chonoi.headless --mode quan   --seed 1 --inventory catch.json --ticks 600 --out quan.jsonl
@@ -27,7 +27,7 @@ python3 -m chonoi.headless --mode day    --days 1 --seed 1 --ticks 22200 --out d
 
 ## Điều khiển & cách tính điểm
 - **Điều khiển:** `WASD` / phím mũi tên để bơi (`gather`) hoặc đi lại (`quan`); `Space` bắt cá dưới nước; `E` tương tác (cập bến / hái rau / nhặt đồ ở buổi sáng; nấu / lấy món / phục vụ ở buổi tối); `R` chơi lại.
-- **Tính điểm (Contract v1.1):** `score = earned + 100 × floor(reputation)` (tiền tính theo nghìn đồng; mua nâng cấp trong Shop trừ vào `money`, giữ nguyên `earned` và `score`).
+- **Tính điểm (Contract v1.2):** `score = earned + 100 × floor(reputation)` (tiền tính theo nghìn đồng; giá món chốt theo độ tươi nguyên liệu `floor(giá_niêm_yết × trung_bình_fresh / 100)` khi bắt đầu nấu; mua nâng cấp trong Shop trừ vào `money`, giữ nguyên `earned` và `score`). Chi tiết thay đổi schema kho v1.2 xem [`CHANGELOG.md`](CHANGELOG.md) và [`docs/adr/0001-freshness-individual-inventory.md`](docs/adr/0001-freshness-individual-inventory.md).
 
 ---
 
@@ -43,7 +43,7 @@ Toàn bộ mở rộng sáng tạo nằm tách riêng trong `chonoi/sim/live_gat
 
 ### Bằng chứng lõi headless vẫn đúng
 - `tests/test_diving.py`, `tests/test_live_world.py`: xác nhận `Session("gather", ...)` và `headless` không có `collectibles`, không dùng tiến độ campaign, không đột biến `game.contract.json`, và `inventory_items()` lọc chỉ giữ đúng 6 nguyên liệu lõi Contract v1.1.
-- `tests/test_smoke_p1.py`, `tests/test_quan_orders.py`, `tests/test_quan_v11.py`, `tests/test_v11_core.py` + bằng chứng chạy thật tại [`docs/verification/phase-2.md`](docs/verification/phase-2.md) và [`docs/proof/phase-2/`](docs/proof/phase-2/).
+- `tests/test_smoke_p1.py`, `tests/test_quan_orders.py`, `tests/test_quan_v11.py`, `tests/test_v11_core.py`, `tests/test_v12_freshness.py` + bằng chứng chạy thật tại [`docs/verification/phase-2.md`](docs/verification/phase-2.md), [`docs/verification/phase-3.md`](docs/verification/phase-3.md) và [`docs/proof/phase-3/`](docs/proof/phase-3/).
 
 ---
 

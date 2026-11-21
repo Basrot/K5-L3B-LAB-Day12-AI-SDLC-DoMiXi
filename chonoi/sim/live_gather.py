@@ -11,6 +11,8 @@ from .freshness import new_item, decay, snapshot_items
 
 
 class LiveGatherSim(GatherSim):
+    _live_mode = True
+
     def _move(self, inp):
         super()._move(inp)
         limit = self.t.get('max_depth')

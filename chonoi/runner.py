@@ -6,6 +6,7 @@ Thứ tự ghi: (tick 0 event nếu `day`) -> snapshot tick 0 -> mỗi bước: 
 
 import math
 
+from .freshness_v12 import get_freshness_cfg
 from .ids import IdAllocator
 from .inputs import InputPlayer
 from .inventory import write_inventory
@@ -131,7 +132,8 @@ class Session:
     def write_inventory_if_done(self, inventory_out):
         """File kho: ghi MỘT lần khi có gather_end; chưa kết thúc thì giữ nguyên file đích."""
         if self.mode == "gather" and self.sim.done and inventory_out:
-            write_inventory(inventory_out, self.sim.inventory_items())
+            spoiled_below = get_freshness_cfg(self.tuning)["spoiled_below"]
+            write_inventory(inventory_out, self.sim.inventory_items(), spoiled_below=spoiled_below)
 
 
 def run(mode, tuning, scenario, seed, frames, ticks, out_path, snapshot_every, inventory=None, inventory_out=None, days=1):

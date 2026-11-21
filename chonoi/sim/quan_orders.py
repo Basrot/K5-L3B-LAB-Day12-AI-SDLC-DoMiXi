@@ -1,15 +1,26 @@
-"""Nghiệp vụ đơn hàng, khách, giữ chỗ nguyên liệu, kế hoạch ngày và kiểm mâu thuẫn mức luật cho `quan` (Contract v1.1).
+"""Nghiệp vụ đơn hàng, khách, giữ chỗ nguyên liệu theo id cá thể, độ tươi và kiểm mâu thuẫn cho `quan` (Contract v1.2).
 
-Hỗ trợ cả chế độ `--mode quan` độc lập (đủ 6 món) lẫn `--mode day` (lọc món theo `day_plan` của Ngày hiện tại,
-cấm `quan.stock`/`quan.reputation` trong scenario và kiểm món/bếp/tay khớp kế hoạch ngày).
+Hỗ trợ cả chế độ `--mode quan` độc lập (đủ 6 món) lẫn `--mode day` (lọc món theo `day_plan` của Ngày hiện tại):
+  - Kho thô là mảng cá thể `[{id, kind, fresh(Fraction)}]`.
+  - `customers[].reserved` là mảng id cá thể `["I1", ...]`, không trỏ hàng ươn, không trùng giữa các đơn.
+  - Chọn cá thể tươi nhất (hòa theo id nhỏ); khi hàng giữ bị ươn, nhả toàn bộ và thử giữ lại đúng 1 lần theo `(order_tick, table_id)`.
+  - Chốt giá theo độ tươi: `base_price = floor(giá_niêm_yết * trung_bình_fresh / 100)`.
 """
 
 from decimal import Decimal, ROUND_FLOOR
 import math
 
 from ..errors import BadInput
+from ..freshness_v12 import (
+    compute_fresh_price,
+    get_freshness_cfg,
+    is_spoiled,
+    parse_item_list,
+    serialize_item,
+    to_fraction,
+)
 from ..ids import id_key, sort_by_id
-from ..inventory import KINDS_V11, validate_items
+from ..inventory import KINDS_V11
 
 TICK = 60.0
 
@@ -86,19 +97,19 @@ def validate_dish_payload(dish, menu: dict, label: str = "dish", allowed_dishes=
     return {"order_id": oid, "dish_id": did, "base_price": bp}
 
 
-def _validate_reserved_map(raw, allowed_kinds, label: str) -> dict:
-    if allowed_kinds is not None:
-        return validate_items(raw, allowed_kinds)
-    if not isinstance(raw, dict):
-        raise BadInput(f"{label} phải là object")
-    out = {}
-    for k, v in raw.items():
-        if not isinstance(k, str) or not k:
-            raise BadInput(f"{label}: khóa nguyên liệu không hợp lệ: {k!r}")
-        _check_nonneg_int(f"{label}.{k}", v)
-        if v > 0:
-            out[k] = v
-    return {k: out[k] for k in sorted(out)}
+def _validate_reserved_ids(raw, label: str) -> list:
+    if not isinstance(raw, list):
+        raise BadInput(f"{label} phải là mảng id cá thể [\"I1\", ...] (Contract v1.2 không nhận dict)")
+    seen = set()
+    out = []
+    for idx, ident in enumerate(raw):
+        if not isinstance(ident, str) or not ident:
+            raise BadInput(f"{label}[{idx}] phải là chuỗi id khác rỗng")
+        if ident in seen:
+            raise BadInput(f"{label}: trùng id cá thể {ident}")
+        seen.add(ident)
+        out.append(ident)
+    return sorted(out, key=id_key)
 
 
 def _validate_pos_bounds(name: str, pos, bounds: dict):
@@ -111,15 +122,11 @@ def _validate_pos_bounds(name: str, pos, bounds: dict):
 
 
 def validate_quan_scenario_block(block: dict, tuning: dict, in_day_mode: bool = False, allowed_dishes=None):
-    """Kiểm cấu trúc và bất biến mức luật của khối `scenario.quan` (Contract v1.0 / v1.1).
-
-    - Khi `in_day_mode=True`: cấm `quan.stock` và `quan.reputation` (Contract v1.1 mục 4.3).
-    - Nếu `stock` vắng mặt trong `block`, tồn kho có thể nạp từ `--inventory` hoặc từ `gather` trong `day`,
-      nên kiểm giữ chỗ so với tồn kho thực tế được chạy lại trong `init_quan_entities`.
-    """
+    """Kiểm cấu trúc và bất biến mức luật của khối `scenario.quan` (Contract v1.2)."""
     t_quan = tuning["quan"]
     menu = tuning["menu"]
     bounds = t_quan["bounds"]
+    spoiled_below = get_freshness_cfg(tuning)["spoiled_below"]
 
     if in_day_mode:
         if "stock" in block:
@@ -161,7 +168,7 @@ def validate_quan_scenario_block(block: dict, tuning: dict, in_day_mode: bool = 
             _validate_pos_bounds(f"tables.{tb['id']}.pos", tb["pos"], bounds)
         merged_tables[tb["id"]].update(tb)
 
-    stock = validate_items(block["stock"], KINDS_V11) if "stock" in block else None
+    stock = parse_item_list(block["stock"], allowed_kinds=KINDS_V11, label="quan.stock") if "stock" in block else None
 
     init_quan_entities(
         t_quan=t_quan,
@@ -172,26 +179,26 @@ def validate_quan_scenario_block(block: dict, tuning: dict, in_day_mode: bool = 
         raw_customers=block.get("customers", []),
         raw_hand=block.get("hand"),
         ids=None,
-        allowed_kinds=KINDS_V11,
         allowed_dishes=allowed_dishes,
         check_stock_capacity=(stock is not None),
+        spoiled_below=spoiled_below,
     )
 
 
 def init_quan_entities(
     t_quan: dict,
     menu: dict,
-    stock: dict | None,
+    stock: list | None,
     stoves: list,
     tables: list,
     raw_customers: list,
     raw_hand,
     ids=None,
-    allowed_kinds=None,
     allowed_dishes=None,
     check_stock_capacity: bool = True,
+    spoiled_below=30,
 ):
-    """Chuẩn hóa và kiểm mâu thuẫn mức luật cho stoves, hand, customers (Contract v1.0 / v1.1).
+    """Chuẩn hóa và kiểm mâu thuẫn mức luật cho stoves, hand, customers (Contract v1.2).
 
     Trả về `(stoves, hand, customers)` đã chuẩn hóa và sắp theo id.
     """
@@ -315,14 +322,14 @@ def init_quan_entities(
             if cid in dishes_by_order:
                 raise BadInput(f"customers.{cid}: khách eating không được còn món ở bếp/tay")
             if has_reserved_key:
-                res_norm = _validate_reserved_map(raw_res, allowed_kinds, f"customers.{cid}.reserved")
+                res_norm = _validate_reserved_ids(raw_res, f"customers.{cid}.reserved")
                 if res_norm:
                     raise BadInput(f"customers.{cid}: khách eating phải có reserved rỗng")
             if raw_bp is None or raw_tip is None:
                 raise BadInput(f"customers.{cid}: khách eating phải khai base_price và tip đã chốt")
             base_price = _check_pos_int(f"customers.{cid}.base_price", raw_bp)
             tip = _check_nonneg_int(f"customers.{cid}.tip", raw_tip)
-            reserved = {}
+            reserved = []
         else:  # state == "waiting"
             if order_status == "served":
                 raise BadInput(f"customers.{cid}: khách waiting không thể có order_status='served'")
@@ -336,7 +343,7 @@ def init_quan_entities(
 
             if order_status == "assigned":
                 if has_reserved_key:
-                    res_norm = _validate_reserved_map(raw_res, allowed_kinds, f"customers.{cid}.reserved")
+                    res_norm = _validate_reserved_ids(raw_res, f"customers.{cid}.reserved")
                     if res_norm:
                         raise BadInput(f"customers.{cid}: đơn assigned phải có reserved rỗng")
                 if cid not in dishes_by_order:
@@ -350,25 +357,25 @@ def init_quan_entities(
                         raise BadInput(f"customers.{cid}: base_price không khớp món trên bếp/tay")
                 else:
                     base_price = dish["base_price"]
-                reserved = {}
+                reserved = []
             elif order_status == "unfulfillable":
                 if cid in dishes_by_order:
                     raise BadInput(f"customers.{cid}: đơn unfulfillable không được có món ở bếp/tay")
                 if has_reserved_key:
-                    res_norm = _validate_reserved_map(raw_res, allowed_kinds, f"customers.{cid}.reserved")
+                    res_norm = _validate_reserved_ids(raw_res, f"customers.{cid}.reserved")
                     if res_norm:
                         raise BadInput(f"customers.{cid}: đơn unfulfillable phải có reserved rỗng")
                 base_price = _check_pos_int(f"customers.{cid}.base_price", raw_bp) if raw_bp is not None else None
-                reserved = {}
+                reserved = []
             else:  # order_status == "reserved"
                 if cid in dishes_by_order:
                     raise BadInput(f"customers.{cid}: đơn reserved không được có món ở bếp/tay")
                 base_price = _check_pos_int(f"customers.{cid}.base_price", raw_bp) if raw_bp is not None else None
-                expected_recipe = normalize_recipe(menu[dish_id]["recipe"])
                 if has_reserved_key:
-                    res_norm = _validate_reserved_map(raw_res, allowed_kinds, f"customers.{cid}.reserved")
-                    if res_norm != expected_recipe:
-                        raise BadInput(f"customers.{cid}: reserved khác công thức món {dish_id}")
+                    res_norm = _validate_reserved_ids(raw_res, f"customers.{cid}.reserved")
+                    expected_total = sum(normalize_recipe(menu[dish_id]["recipe"]).values())
+                    if len(res_norm) != expected_total:
+                        raise BadInput(f"customers.{cid}: số lượng cá thể reserved khác công thức món {dish_id}")
                     reserved = res_norm
                 else:
                     reserved = None  # sẽ cấp tự động theo (order_tick, id_key(table_id))
@@ -399,58 +406,132 @@ def init_quan_entities(
         if oid not in customers_by_id:
             raise BadInput(f"{src}: không có khách {oid} (tham chiếu id không tạo thực thể)")
 
-    # 5. Kiểm tổng giữ chỗ không vượt tồn kho & cấp giữ chỗ mặc định cho đơn reserved thiếu reserved
+    # 5. Kiểm trùng id giữa các đơn explicit_reserved ngay cả khi chưa có stock (ví dụ stock đến từ --inventory)
+    used_ids = set()
+    for c in explicit_reserved:
+        for item_id in c["reserved"]:
+            if item_id in used_ids:
+                raise BadInput(f"customers.{c['id']}: cá thể {item_id} bị dùng chung giữa hai đơn")
+            used_ids.add(item_id)
+
+    # 6. Kiểm đối chiếu tồn kho thực tế (tồn tại, chưa ươn, khớp công thức) & cấp giữ chỗ mặc định
     if check_stock_capacity:
-        avail = {k: v for k, v in (stock or {}).items() if v > 0}
+        stock_by_id = {it["id"]: it for it in (stock or [])}
         for c in explicit_reserved:
-            for k, cnt in c["reserved"].items():
-                if avail.get(k, 0) < cnt:
-                    raise BadInput(f"customers.{c['id']}: giữ chỗ nguyên liệu {k} vượt tồn kho")
-                avail[k] = avail.get(k, 0) - cnt
+            recipe = normalize_recipe(menu[c["dish_id"]]["recipe"])
+            counts = {}
+            for item_id in c["reserved"]:
+                it = stock_by_id.get(item_id)
+                if it is None:
+                    raise BadInput(f"customers.{c['id']}: cá thể {item_id} không có trong kho")
+                if is_spoiled(it, spoiled_below):
+                    raise BadInput(f"customers.{c['id']}: không thể giữ cá thể đã ươn {item_id}")
+                counts[it["kind"]] = counts.get(it["kind"], 0) + 1
+            if {k: counts[k] for k in sorted(counts)} != recipe:
+                raise BadInput(f"customers.{c['id']}: danh sách reserved không khớp công thức món {c['dish_id']}")
+
         for c in sorted(auto_reserved, key=lambda x: (x["order_tick"], id_key(x["table_id"]))):
             recipe = normalize_recipe(menu[c["dish_id"]]["recipe"])
-            for k, cnt in recipe.items():
-                if avail.get(k, 0) < cnt:
-                    raise BadInput(f"customers.{c['id']}: không đủ tồn kho {k} để giữ chỗ cho đơn reserved")
-            for k, cnt in recipe.items():
-                avail[k] = avail.get(k, 0) - cnt
-            c["reserved"] = dict(recipe)
+            picked = _pick_freshest_ids(recipe, stock or [], used_ids, spoiled_below)
+            if picked is None:
+                raise BadInput(f"customers.{c['id']}: không đủ hàng chưa ươn trong kho để giữ chỗ cho đơn reserved")
+            c["reserved"] = picked
+            used_ids.update(picked)
     else:
         for c in auto_reserved:
-            c["reserved"] = normalize_recipe(menu[c["dish_id"]]["recipe"])
+            c["reserved"] = []
 
     if ids is not None:
+        for it in (stock or []):
+            ids.reserve(it["id"])
         for c in customers:
             ids.reserve(c["id"])
 
     return norm_stoves, hand, sort_by_id(customers)
 
 
-# --- Nghiệp vụ kho khả dụng, chọn món, đơn hàng & vòng đời khách ---
+# --- Nghiệp vụ kho khả dụng, chọn cá thể tươi nhất, ươn hàng, đơn hàng & vòng đời khách ---
 
-def available_stock(stock: dict, customers: list) -> dict:
-    """Kho khả dụng = tồn vật lý − tổng phần giữ chỗ của các khách đang ngồi."""
-    avail = {k: v for k, v in stock.items() if v > 0}
+def _reserved_id_set(customers: list) -> set:
+    out = set()
     for c in customers:
-        for k, cnt in c.get("reserved", {}).items():
-            if cnt > 0:
-                avail[k] = avail.get(k, 0) - cnt
-    return {k: v for k, v in sorted(avail.items()) if v > 0}
+        res = c.get("reserved")
+        if isinstance(res, list):
+            out.update(res)
+    return out
 
 
-def cookable_dishes(menu: dict, stock: dict, customers: list, allowed_dishes=None) -> list:
-    """Danh sách dish_id nấu được từ kho khả dụng, sắp theo mã Unicode.
+def _pick_freshest_ids(recipe: dict, stock: list, used_ids: set, spoiled_below=30):
+    """Chọn các cá thể chưa ươn tươi nhất (hòa theo id nhỏ) khớp `recipe`, trả mảng id đã sắp theo `id_key` hoặc None."""
+    picked = []
+    for kind, need in normalize_recipe(recipe).items():
+        candidates = [
+            it for it in stock
+            if it["kind"] == kind and it["id"] not in used_ids and not is_spoiled(it, spoiled_below)
+        ]
+        if len(candidates) < need:
+            return None
+        candidates.sort(key=lambda it: (-to_fraction(it["fresh"]), id_key(it["id"])))
+        picked.extend(it["id"] for it in candidates[:need])
+    return sorted(picked, key=id_key)
 
-    Trong `--mode day`: truyền `allowed_dishes = set(day_plan["dishes"])` để lọc theo kế hoạch ngày
-    TRƯỚC KHI lọc nguyên liệu khả dụng (Contract v1.1 mục 2 & 4.5).
-    """
-    avail = available_stock(stock, customers)
+
+def available_unspoiled_items(stock: list, customers: list, spoiled_below=30) -> list:
+    """Danh sách cá thể chưa ươn và chưa bị đơn nào giữ chỗ."""
+    used = _reserved_id_set(customers)
+    return [it for it in stock if it["id"] not in used and not is_spoiled(it, spoiled_below)]
+
+
+def available_stock(stock: list, customers: list, spoiled_below=30) -> dict:
+    """Đếm số lượng khả dụng chưa ươn theo loại (phục vụ kiểm nấu được & HUD)."""
+    counts = {}
+    for it in available_unspoiled_items(stock, customers, spoiled_below=spoiled_below):
+        counts[it["kind"]] = counts.get(it["kind"], 0) + 1
+    return {k: counts[k] for k in sorted(counts)}
+
+
+def select_items_for_recipe(recipe: dict, stock: list, customers: list, spoiled_below=30):
+    """Chọn mảng id cá thể tươi nhất chưa ươn cho `recipe` dựa trên danh sách khách hiện tại."""
+    return _pick_freshest_ids(recipe, stock, _reserved_id_set(customers), spoiled_below=spoiled_below)
+
+
+def cookable_dishes(menu: dict, stock: list, customers: list, allowed_dishes=None, spoiled_below=30) -> list:
+    """Danh sách dish_id nấu được từ hàng chưa ươn khả dụng, sắp theo mã Unicode."""
+    avail = available_stock(stock, customers, spoiled_below=spoiled_below)
     candidates = sorted(menu) if allowed_dishes is None else [d for d in sorted(menu) if d in allowed_dishes]
     return [
         dish_id
         for dish_id in candidates
         if all(avail.get(k, 0) >= cnt for k, cnt in menu[dish_id]["recipe"].items())
     ]
+
+
+def re_reserve_after_spoil(stock: list, customers: list, menu: dict, spoiled_below=30):
+    """Xử lý các đơn `reserved` có cá thể vừa ươn theo thứ tự `(order_tick, id_key(table_id))`.
+
+    Mỗi đơn bị ảnh hưởng: nhả toàn bộ phần giữ hiện tại và thử giữ lại đúng một lần từ hàng tươi nhất chưa ươn.
+    Không đủ thì chuyển sang `unfulfillable` (khách tiếp tục chờ tới hạn kiên nhẫn).
+    """
+    stock_by_id = {it["id"]: it for it in stock}
+    affected = []
+    for c in customers:
+        if c["state"] != "waiting" or c["order_status"] != "reserved":
+            continue
+        res = c.get("reserved") or []
+        if any(
+            (item_id not in stock_by_id) or is_spoiled(stock_by_id[item_id], spoiled_below)
+            for item_id in res
+        ):
+            affected.append(c)
+
+    affected.sort(key=lambda c: (c["order_tick"], id_key(c["table_id"])))
+    for c in affected:
+        c["reserved"] = []
+        picked = select_items_for_recipe(menu[c["dish_id"]]["recipe"], stock, customers, spoiled_below=spoiled_below)
+        if picked is not None:
+            c["reserved"] = picked
+        else:
+            c["order_status"] = "unfulfillable"
 
 
 def oldest_reserved_order(customers: list):
@@ -461,33 +542,40 @@ def oldest_reserved_order(customers: list):
     return min(candidates, key=lambda c: (c["order_tick"], id_key(c["table_id"])))
 
 
-def consume_order_for_cooking(stock: dict, customer: dict, menu: dict):
-    """Tiêu đúng nguyên liệu giữ của đơn `reserved`, chốt giá và chuyển sang `assigned`.
+def consume_order_for_cooking(stock: list, customer: dict, menu: dict, spoiled_below=30):
+    """Tiêu đúng các id cá thể đang giữ của đơn `reserved`, chốt giá theo độ tươi và chuyển sang `assigned`.
 
-    Trả về `(items_sorted, base_price)` để phát `cook_started` và gán lên bếp.
+    Trả về `(cook_items_sorted, base_price)`:
+      - `cook_items_sorted`: mảng cá thể `{id, kind, fresh}` sắp theo `(kind, id_key(id))`.
+      - `base_price`: `floor(giá_niêm_yết * trung_bình_fresh / 100)`.
     """
     if customer["state"] != "waiting" or customer["order_status"] != "reserved":
         raise ValueError(f"đơn {customer['id']} không ở trạng thái reserved")
-    reserved = customer["reserved"]
-    items = []
-    for k in sorted(reserved):
-        cnt = reserved[k]
-        if stock.get(k, 0) < cnt:
-            raise ValueError(f"tồn kho {k} nhỏ hơn phần giữ chỗ của đơn {customer['id']}")
-        stock[k] = stock.get(k, 0) - cnt
-        if stock[k] == 0:
-            del stock[k]
-        items.extend([k] * cnt)
-    base_price = menu[customer["dish_id"]]["price"]
-    customer["reserved"] = {}
+    reserved_ids = set(customer["reserved"])
+    used_items = []
+    remaining = []
+    for it in stock:
+        if it["id"] in reserved_ids:
+            used_items.append(it)
+        else:
+            remaining.append(it)
+    if len(used_items) != len(reserved_ids):
+        raise ValueError(f"tồn kho thiếu cá thể giữ chỗ của đơn {customer['id']}")
+    stock[:] = remaining
+
+    base_price = compute_fresh_price(menu[customer["dish_id"]]["price"], used_items)
+    used_sorted = sorted(used_items, key=lambda it: (it["kind"], id_key(it["id"])))
+    cook_items = [serialize_item(it, spoiled_below=spoiled_below) for it in used_sorted]
+
+    customer["reserved"] = []
     customer["order_status"] = "assigned"
     customer["base_price"] = base_price
-    return items, base_price
+    return cook_items, base_price
 
 
 def release_customer_links(customer: dict, stoves: list, hand):
     """Khi khách rời: nhả phần giữ thô, bỏ món của đơn đang nấu, ready hoặc trên tay (không hoàn tồn đã tiêu)."""
-    customer["reserved"] = {}
+    customer["reserved"] = []
     oid = customer["id"]
     for st in stoves:
         dish = st.get("dish")
@@ -519,7 +607,7 @@ def process_waiting_departures(
     reputation: float,
     closing: bool = False,
 ):
-    """Bước 4 (phần khách chờ rời bàn): duyệt theo id bàn."""
+    """Bước 5 (phần khách chờ rời bàn): duyệt theo id bàn."""
     events = []
     by_table = {c["table_id"]: c for c in customers}
     for tb in sort_by_id(tables):
@@ -546,15 +634,16 @@ def spawn_customer_if_due(
     phase_tick: int,
     t_quan: dict,
     menu: dict,
-    stock: dict,
+    stock: list,
     tables: list,
     customers: list,
     rng,
     ids,
     random_customers: bool = True,
     allowed_dishes=None,
+    spoiled_below=30,
 ) -> list:
-    """Bước 5: sinh khách mới theo `phase_tick` (chỉ gọi khi ca còn giờ)."""
+    """Bước 6: sinh khách mới theo `phase_tick` (chỉ gọi khi ca còn giờ)."""
     if not random_customers:
         return []
     first = t_quan["first_customer_tick"]
@@ -568,11 +657,15 @@ def spawn_customer_if_due(
         return []
 
     table = free_tables[0]
-    dishes = cookable_dishes(menu, stock, customers, allowed_dishes=allowed_dishes)
+    dishes = cookable_dishes(menu, stock, customers, allowed_dishes=allowed_dishes, spoiled_below=spoiled_below)
     if not dishes:
         return [("no_dish", {})]
 
     dish_id = rng.get("customer_order").choice(dishes)
+    picked = select_items_for_recipe(menu[dish_id]["recipe"], stock, customers, spoiled_below=spoiled_below)
+    if picked is None:
+        return [("no_dish", {})]
+
     cid = ids.new("C")
     cust = {
         "id": cid,
@@ -583,7 +676,7 @@ def spawn_customer_if_due(
         "patience_ticks_left": ticks_from_s(t_quan["patience_s"]),
         "eat_ticks_left": 0,
         "order_status": "reserved",
-        "reserved": normalize_recipe(menu[dish_id]["recipe"]),
+        "reserved": picked,
         "base_price": None,
         "tip": None,
     }

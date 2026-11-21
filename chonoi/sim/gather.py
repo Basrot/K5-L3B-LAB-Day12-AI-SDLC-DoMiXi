@@ -1,8 +1,10 @@
-"""Buổi sáng — Lặn & Hái (`gather`) đầy đủ theo Test Contract v1.1.
+"""Buổi sáng — Lặn & Hái (`gather`) đầy đủ theo Test Contract v1.2.
 
 Bao gồm:
   - Di chuyển `[x, d]`, ramp, chặn biên, mặt nước (`d <= surface_depth`), `dive` / `surface`.
-  - Oxy, ngạt (`oxygen_empty`, `choke`), ngất (`faint` với `cause` & `lost` LIFO), hỗ trợ nâng cấp `oxygen`/`hp`.
+  - Độ tươi nguyên liệu cá thể v1.2 (`{id, kind, fresh}`): cấp `I1, I2, ...` tăng liên tục xuyên pha/Ngày,
+    hao 0.5/s (1/120 mỗi tick) ở đầu bước cho hàng sẵn có, phát `spoiled` đúng 1 lần theo id khi `< 30`.
+  - Oxy, ngạt (`oxygen_empty`, `choke`), ngất (`faint` với `cause` & `lost` mảng cá thể LIFO), hỗ trợ nâng cấp `oxygen`/`hp`.
   - Hái nút mặt nước (`gather` với `amount`, `hold_full`, `node_regrown`) & bắt cá dưới nước (`fish_caught` với `yield`).
   - Đàn cá bơi `1.5 m/s` phản xạ mép, đổi hướng mỗi `fish_turn_ticks` (120) và sinh thêm ở `phase_tick = 360*k` (`fish_spawned`).
   - Cá Sấu Năm Chèo (`M1` từ Ngày 1, `M2` từ Ngày 3): `patrol`, `chase`, `recoil`, `monster_hit` (mất 1 HP + bỏ `floor(giỏ/2)` LIFO + bất tử 90 tick) và `faint(cause="monster")`.
@@ -10,8 +12,16 @@ Bao gồm:
 
 import math
 
+from ..freshness_v12 import (
+    decay_items,
+    get_freshness_cfg,
+    make_item,
+    parse_item_list,
+    serialize_items_in_order,
+    serialize_items_sorted,
+)
 from ..ids import id_key, sort_by_id
-from ..inventory import hold_to_items
+from ..inventory import KINDS_V11, hold_to_items
 from .ramp import ramp_velocity
 
 TICK = 60.0
@@ -21,6 +31,7 @@ AXES = ("x", "d")
 class GatherSim:
     mode = "gather"
     phase = "gather"
+    _live_mode = False
 
     def __init__(
         self,
@@ -33,10 +44,12 @@ class GatherSim:
         initial_money: int = 0,
         initial_earned: int = 0,
         initial_reputation=None,
+        realloc_hold_ids: bool = False,
     ):
         t = tuning["gather"]
         self.t = t
         self.tuning = tuning
+        self.fresh_cfg = get_freshness_cfg(tuning)
         self.rng = streams
         self.ids = ids
         self.day = int(day)
@@ -68,7 +81,22 @@ class GatherSim:
         self.zero_oxy_ticks = p.get("zero_oxy_ticks", 0)
         self.invuln_ticks = p.get("invuln_ticks", 0)
         self.catch_cd_ticks = p.get("catch_cd_ticks", 0)
-        self.hold = list(scenario.get("hold", []))  # thứ tự nhặt, cuối mảng là mới nhất
+
+        # Giỏ v1.2: mảng cá thể {id, kind, fresh(Fraction)} theo thứ tự nhặt (cuối mảng là mới nhất).
+        # Bản live (_live_mode=True) giữ mảng chuỗi kind vì LiveGatherSim tự chạy freshness.py riêng.
+        raw_hold = scenario.get("hold", [])
+        if self._live_mode:
+            self.hold = [it["kind"] if isinstance(it, dict) else it for it in raw_hold]
+        else:
+            parsed_hold = parse_item_list(raw_hold, allowed_kinds=KINDS_V11, label="gather.hold")
+            if realloc_hold_ids:
+                # Ngày 2+ trong --mode day: cấp id mới theo thứ tự mảng, giữ nguyên kind và fresh ban đầu
+                self.hold = [make_item(ids.new("I"), it["kind"], it["fresh"]) for it in parsed_hold]
+            else:
+                self.hold = parsed_hold
+                for it in self.hold:
+                    ids.reserve(it["id"])
+
         self.time_left_ticks = scenario.get("time_left_ticks", int(round(t["duration_s"] * TICK)))
 
         # Nút hái
@@ -83,7 +111,7 @@ class GatherSim:
             for n in src_nodes
         ]
 
-        # Đàn cá (v1.1: random_fish=false tắt cá mặc định, bơi và sinh; khai fish khi random_fish=true vẫn bơi/sinh)
+        # Đàn cá (v1.1/v1.2: random_fish=false tắt cá mặc định, bơi và sinh; khai fish khi random_fish=true vẫn bơi/sinh)
         self.random_fish = scenario.get("random_fish", True)
         if "fish" in scenario:
             src_fish = scenario["fish"]
@@ -136,8 +164,20 @@ class GatherSim:
         self.reason = None
 
     # --- giao diện cho runner -------------------------------------------------
-    def inventory_items(self) -> dict:
-        return hold_to_items(self.hold)
+    def inventory_items(self):
+        if self._live_mode:
+            return hold_to_items(self.hold)
+        return [dict(it) for it in sort_by_id(self.hold)]
+
+    def _serialize_hold(self) -> list:
+        if self._live_mode:
+            return list(self.hold)
+        return serialize_items_in_order(self.hold, spoiled_below=self.fresh_cfg["spoiled_below"])
+
+    def _serialize_lost(self, dropped: list) -> list:
+        if self._live_mode:
+            return list(dropped)
+        return serialize_items_in_order(dropped, spoiled_below=self.fresh_cfg["spoiled_below"])
 
     def snapshot(self) -> dict:
         return {
@@ -154,7 +194,7 @@ class GatherSim:
                 "catch_cd_ticks": self.catch_cd_ticks,
                 "at_surface": self._at_surface(),
             },
-            "hold": list(self.hold),
+            "hold": self._serialize_hold(),
             "hold_count": len(self.hold),
             "hold_capacity": self.t["hold_capacity"],
             "nodes": [
@@ -192,10 +232,10 @@ class GatherSim:
             ],
         }
 
-    # --- một bước (thứ tự chính xác theo Contract v1.1 mục 4.5) ---------------
+    # --- một bước (thứ tự chính xác theo Contract v1.2) -----------------------
     def step(self, inp):
         events = []
-        # 1. Đồng hồ, cooldown, giảm bất tử và hồi nút
+        # 1. Đồng hồ, cooldown, giảm bất tử, hồi nút và hao tươi hàng có sẵn ở ĐẦU bước
         self.phase_tick += 1
         self.time_left_ticks = max(0, self.time_left_ticks - 1)
         self.invuln_ticks = max(0, self.invuln_ticks - 1)
@@ -205,6 +245,14 @@ class GatherSim:
                 n["regrow_ticks"] -= 1
                 if n["regrow_ticks"] == 0:
                     events.append(("node_regrown", {"node_id": n["id"]}))
+        if not self._live_mode:
+            decay_items(
+                self.hold,
+                self.fresh_cfg["gather_decay_per_s"],
+                self.fresh_cfg["spoiled_below"],
+                "hold",
+                events,
+            )
 
         # 2. Bơi, chặn mép, dive/surface, oxy và ngạt
         was_surface = self._at_surface()
@@ -349,7 +397,8 @@ class GatherSim:
         _, _, m, spec = min(hits, key=lambda item: item[:2])
         self.hp = max(0, self.hp - 1)
         drop_count = math.floor(len(self.hold) * m_cfg.get("loss_ratio", 0.5))
-        lost = [self.hold.pop() for _ in range(drop_count)]
+        dropped = [self.hold.pop() for _ in range(drop_count)]
+        lost = self._serialize_lost(dropped)
         self.invuln_ticks = int(m_cfg.get("invuln_ticks", 90))
 
         rx, rd = m["pos"][0] - self.pos[0], m["pos"][1] - self.pos[1]
@@ -479,8 +528,9 @@ class GatherSim:
         return out
 
     def _faint(self, cause: str, events):
-        lost = list(reversed(self.hold))
+        dropped = list(reversed(self.hold))
         self.hold.clear()
+        lost = self._serialize_lost(dropped)
         events.append(("faint", {"cause": cause, "lost": lost, "hp": 0}))
         self._finish("fainted", events)
 
@@ -489,7 +539,12 @@ class GatherSim:
         if count > free:
             events.append(("hold_full", {"action": action, id_field: entity_id, "required": count, "free": free}))
             return False
-        self.hold.extend([kind] * count)
+        if self._live_mode:
+            self.hold.extend([kind] * count)
+        else:
+            init_fresh = self.fresh_cfg["initial"]
+            for _ in range(count):
+                self.hold.append(make_item(self.ids.new("I"), kind, init_fresh))
         return True
 
     def _at_surface(self) -> bool:
@@ -501,7 +556,11 @@ class GatherSim:
     def _finish(self, reason, events):
         self.done = True
         self.reason = reason
-        events.append(("gather_end", {"reason": reason, "inventory": {"items": self.inventory_items()}}))
+        if self._live_mode:
+            inv_payload = self.inventory_items()
+        else:
+            inv_payload = serialize_items_sorted(self.hold, spoiled_below=self.fresh_cfg["spoiled_below"])
+        events.append(("gather_end", {"reason": reason, "inventory": {"items": inv_payload}}))
 
     def _move(self, inp):
         speed = self.t["swim_speed"]

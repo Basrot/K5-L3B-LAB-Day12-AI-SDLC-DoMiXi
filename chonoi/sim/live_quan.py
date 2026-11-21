@@ -3,19 +3,50 @@ import math
 from .quan import QuanSim
 from ..ids import sort_by_id, id_key
 from ..live_world import load_world
+from ..inventory import hold_to_items
 from .freshness import new_item, decay, snapshot_items
 
 
 class LiveQuanSim(QuanSim):
+    _live_mode = True
+
     def __init__(self, tuning, scenario, streams, ids, inventory=None):
         self.world = load_world()
         self.demo_stock = inventory is None and 'stock' not in scenario
+        v12_items = None
         if self.demo_stock:
-            inventory = self.world['demo_stock']
-        super().__init__(tuning, scenario, streams, ids, inventory)
+            live_stock = dict(self.world['demo_stock'])
+        elif inventory is not None:
+            if isinstance(inventory, list):
+                v12_items = list(inventory)
+                live_stock = hold_to_items(inventory)
+            else:
+                live_stock = {k: v for k, v in inventory.items() if v > 0}
+        elif 'stock' in scenario:
+            raw_s = scenario['stock']
+            if isinstance(raw_s, list):
+                v12_items = list(raw_s)
+                live_stock = hold_to_items(raw_s)
+            else:
+                live_stock = {k: v for k, v in raw_s.items() if v > 0}
+        else:
+            live_stock = {}
+        clean_scenario = {k: v for k, v in scenario.items() if k != 'stock'}
+        super().__init__(tuning, clean_scenario, streams, ids, inventory=live_stock)
+        self.stock = {k: v for k, v in live_stock.items() if v > 0}
         self.elapsed = 0
         self.seat_counter = 0
-        self.fresh_items = [new_item(self, kind) for kind, count in self.stock.items() for _ in range(count)]
+        if v12_items is not None:
+            scale = self.world['freshness']['maximum'] / 100
+            self.fresh_items = []
+            for it in v12_items:
+                entry = new_item(self, it['kind'])
+                entry['id'] = it['id']
+                self.ids.reserve(it['id'])
+                entry['fresh_units'] = int(round(float(it['fresh']) * scale))
+                self.fresh_items.append(entry)
+        else:
+            self.fresh_items = [new_item(self, kind) for kind, count in self.stock.items() for _ in range(count)]
         self.order_plan = None
         self.orders_spawned = {}
         self.extra_customer_limit = 0

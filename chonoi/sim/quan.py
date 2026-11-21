@@ -1,13 +1,24 @@
-"""Buổi tối — Mở Quán (`quan`) đầy đủ theo Test Contract v1.1 (2 bếp B1–B2, 4 bàn T1–T4, 6 món).
+"""Buổi tối — Mở Quán (`quan`) đầy đủ theo Test Contract v1.2 (2 bếp B1–B2, 4 bàn T1–T4, 6 món, độ tươi cá thể).
 
-Đáp ứng trọn vẹn cả Lát 3 (khách, giữ chỗ nguyên liệu, lọc `day_plan`, kiên nhẫn, kiểm fixture)
-và Lát 4 (bếp nấu/chín/`ready_ticks`, `interact` ưu tiên bếp trước bàn, bưng, phục vụ, boa `floor`,
-`paid`, uy tín và đóng ca `closing`).
+Thứ tự tick theo Contract v1.2:
+  1. Đồng hồ & timer (`phase_tick`, `time_left_ticks`, bếp, khách).
+  2. Hao tươi kho thô (0.25/s = 1/240 mỗi tick), phát hết `spoiled` theo `id` rồi mới xử lý giữ chỗ bị ươn theo `(order_tick, table_id)`.
+  3. Xét bếp nấu xong (`dish_ready` theo id bếp).
+  4. Di chuyển và tối đa một `interact` (chốt giá theo trung bình fresh khi bắt đầu nấu; boa theo giá đã chốt).
+  5. Thanh toán, khách rời (`patience` / `closing`) & `quan_end`.
+  6. Nếu còn giờ: sinh khách thường giữ các cá thể tươi nhất chưa ươn.
 """
 
 import math
 
+from ..freshness_v12 import (
+    decay_items,
+    get_freshness_cfg,
+    parse_item_list,
+    serialize_items_sorted,
+)
 from ..ids import id_key, sort_by_id
+from ..inventory import KINDS_V11
 from .quan_orders import (
     available_stock,
     clamp_reputation,
@@ -16,6 +27,7 @@ from .quan_orders import (
     init_quan_entities,
     oldest_reserved_order,
     process_waiting_departures,
+    re_reserve_after_spoil,
     spawn_customer_if_due,
     tick_customer_timers,
     ticks_from_s,
@@ -28,6 +40,7 @@ TICK = 60.0
 class QuanSim:
     mode = "quan"
     phase = "quan"
+    _live_mode = False
 
     def __init__(
         self,
@@ -43,6 +56,8 @@ class QuanSim:
     ):
         t = tuning["quan"]
         self.t = t
+        self.tuning = tuning
+        self.fresh_cfg = get_freshness_cfg(tuning)
         self.menu = tuning["menu"]
         self.rng = streams
         self.ids = ids
@@ -52,9 +67,16 @@ class QuanSim:
         self.vel = [float(c) for c in p.get("vel", [0.0, 0.0])]
         self._tgt = None
         self._ramp_left = 0
-        # kho: --inventory HOẶC scenario.stock (cả hai -> cli đã báo mã 2)
-        src_stock = inventory if inventory is not None else scenario.get("stock", {})
-        self.stock = {k: v for k, v in src_stock.items() if v > 0}
+
+        # Kho v1.2: mảng cá thể [{id, kind, fresh(Fraction)}], giữ nguyên độ tươi kể cả hàng ươn.
+        # Bản live (_live_mode=True) tự quản self.stock dạng dict đếm + self.fresh_items.
+        if self._live_mode:
+            src_stock = inventory if inventory is not None else scenario.get("stock", {})
+            self.stock = dict(src_stock) if isinstance(src_stock, dict) else []
+        else:
+            raw_stock = inventory if inventory is not None else scenario.get("stock", [])
+            self.stock = parse_item_list(raw_stock, allowed_kinds=KINDS_V11, label="quan.stock")
+
         self.phase_tick = 0
         self.random_customers = scenario.get("random_customers", True)
         self.time_left_ticks = scenario.get("time_left_ticks", ticks_from_s(t["duration_s"]))
@@ -69,13 +91,15 @@ class QuanSim:
         self.stoves, self.hand, self.customers = init_quan_entities(
             t_quan=t,
             menu=self.menu,
-            stock=self.stock,
+            stock=None if self._live_mode else self.stock,
             stoves=raw_stoves,
             tables=self.tables,
             raw_customers=scenario.get("customers", []),
             raw_hand=scenario.get("hand"),
             ids=ids,
             allowed_dishes=self.allowed_dishes,
+            check_stock_capacity=(not self._live_mode),
+            spoiled_below=self.fresh_cfg["spoiled_below"],
         )
 
         self.money = int(initial_money)
@@ -95,14 +119,24 @@ class QuanSim:
         return sort_by_id(list(by_id.values()))
 
     def available_stock(self) -> dict:
-        """Kho khả dụng = tồn vật lý − phần giữ chỗ (dùng cho chọn món và HUD)."""
-        return available_stock(self.stock, self.customers)
+        """Kho khả dụng chưa ươn = tồn vật lý chưa ươn − phần giữ chỗ (dùng cho chọn món và HUD)."""
+        return available_stock(self.stock, self.customers, spoiled_below=self.fresh_cfg["spoiled_below"])
 
     def snapshot(self) -> dict:
         occupied = {c["table_id"]: c["id"] for c in self.customers}
+        if self._live_mode and isinstance(self.stock, dict):
+            stock_snap = {k: self.stock[k] for k in sorted(self.stock) if self.stock[k] > 0}
+        else:
+            stock_snap = serialize_items_sorted(self.stock, spoiled_below=self.fresh_cfg["spoiled_below"])
+        cust_snaps = []
+        for c in sort_by_id(self.customers):
+            c_copy = dict(c)
+            if "reserved" in c_copy:
+                c_copy["reserved"] = dict(c_copy["reserved"]) if isinstance(c_copy["reserved"], dict) else list(c_copy["reserved"])
+            cust_snaps.append(c_copy)
         return {
             "player": {"pos": list(self.pos), "vel": list(self.vel)},
-            "stock": {k: self.stock[k] for k in sorted(self.stock) if self.stock[k] > 0},
+            "stock": stock_snap,
             "hand": dict(self.hand) if self.hand is not None else None,
             "stoves": [
                 {
@@ -119,14 +153,13 @@ class QuanSim:
                 {"id": tb["id"], "pos": list(tb["pos"]), "customer_id": occupied.get(tb["id"])}
                 for tb in sort_by_id(self.tables)
             ],
-            "customers": [
-                dict(c, reserved=dict(c["reserved"])) if "reserved" in c else dict(c)
-                for c in sort_by_id(self.customers)
-            ],
+            "customers": cust_snaps,
         }
 
     def step(self, inp):
         events = []
+        spoiled_below = self.fresh_cfg["spoiled_below"]
+
         # 1. Tăng đồng hồ, giảm timer ca, nấu, ăn và kiên nhẫn.
         #    Chỉ tăng ready_ticks cho món đã ready ở ĐẦU bước.
         self.phase_tick += 1
@@ -139,7 +172,11 @@ class QuanSim:
                 st["ready_ticks"] += 1
         tick_customer_timers(self.customers)
 
-        # 2. Xét bếp theo id: món nấu xong chuyển ready (ready_ticks = 0, phát dish_ready).
+        # 2. Hao tươi kho thô (kể cả hàng đang giữ chỗ), phát HẾT `spoiled` theo id rồi mới xử lý giữ chỗ bị ươn.
+        decay_items(self.stock, self.fresh_cfg["quan_decay_per_s"], spoiled_below, "stock", events)
+        re_reserve_after_spoil(self.stock, self.customers, self.menu, spoiled_below=spoiled_below)
+
+        # 3. Xét bếp theo id: món nấu xong chuyển ready (ready_ticks = 0, phát dish_ready).
         for st in sort_by_id(self.stoves):
             if st["state"] == "cooking" and st["cook_ticks_left"] == 0:
                 st["state"] = "ready"
@@ -150,20 +187,20 @@ class QuanSim:
                     {"stove_id": st["id"], "order_id": dish["order_id"], "dish_id": dish["dish_id"]},
                 ))
 
-        # 3. Di chuyển rồi xét tối đa một interact theo (khoảng cách, bếp trước bàn, id).
+        # 4. Di chuyển rồi xét tối đa một interact theo (khoảng cách, bếp trước bàn, id).
         self._move(inp)
         if inp.pressed("interact"):
             self._handle_interact(events)
 
-        # 4. Thanh toán, khách rời & đóng ca (theo id bàn).
-        # 4a. Khách ăn xong (eat_ticks_left == 0) trả tiền và rời bàn ngay.
+        # 5. Thanh toán, khách rời & đóng ca (theo id bàn).
+        # 5a. Khách ăn xong (eat_ticks_left == 0) trả tiền và rời bàn ngay.
         self._collect_eating_payments(events, only_finished=True, reason="finished_eating")
 
         closing = self.time_left_ticks == 0
         if closing:
-            # 4b (closing). Khách còn đang ăn (kể cả vừa được phục vụ ở bước 3) trả ngay.
+            # 5b (closing). Khách còn đang ăn (kể cả vừa được phục vụ ở bước 4) trả ngay.
             self._collect_eating_payments(events, only_finished=False, reason="closing")
-            # 4c (closing). Khách còn chờ rời với `closing` và KHÔNG trừ uy tín; dọn món/giữ chỗ.
+            # 5c (closing). Khách còn chờ rời với `closing` và KHÔNG trừ uy tín; dọn món/giữ chỗ.
             self.hand, self.reputation, leave_events = process_waiting_departures(
                 self.customers, self.tables, self.stoves, self.hand,
                 self.t, self.reputation, closing=True,
@@ -183,24 +220,26 @@ class QuanSim:
             ))
             return events
 
-        # 4b (ca còn giờ). Khách waiting hết kiên nhẫn rời bàn và giảm uy tín.
+        # 5b (ca còn giờ). Khách waiting hết kiên nhẫn rời bàn và giảm uy tín.
         self.hand, self.reputation, leave_events = process_waiting_departures(
             self.customers, self.tables, self.stoves, self.hand,
             self.t, self.reputation, closing=False,
         )
         events.extend(leave_events)
 
-        # 5. Nếu còn giờ, sinh khách mới theo phase_tick (tôn trọng random_customers và allowed_dishes).
+        # 6. Nếu còn giờ, sinh khách mới theo phase_tick (tôn trọng random_customers và allowed_dishes).
         events.extend(spawn_customer_if_due(
             self.phase_tick, self.t, self.menu, self.stock,
             self.tables, self.customers, self.rng, self.ids,
             random_customers=self.random_customers,
             allowed_dishes=self.allowed_dishes,
+            spoiled_below=spoiled_below,
         ))
         return events
 
     def _handle_interact(self, events):
         radius = self.t["interact_radius"]
+        spoiled_below = self.fresh_cfg["spoiled_below"]
         candidates = []
         for st in self.stoves:
             d = math.dist(self.pos, st["pos"])
@@ -219,7 +258,9 @@ class QuanSim:
                 cust = oldest_reserved_order(self.customers)
                 if cust is None:
                     return
-                items, base_price = consume_order_for_cooking(self.stock, cust, self.menu)
+                items, base_price = consume_order_for_cooking(
+                    self.stock, cust, self.menu, spoiled_below=spoiled_below
+                )
                 target["state"] = "cooking"
                 target["dish"] = {
                     "order_id": cust["id"],

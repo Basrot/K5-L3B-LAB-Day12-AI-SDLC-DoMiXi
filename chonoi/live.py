@@ -58,12 +58,12 @@ class LiveGame:
         self._reset()
 
     def _reset(self):
-        self.session = Session(*self._args)
+        # Khởi tạo Session rỗng (không nạp stock live dạng dict vào QuanSim headless v1.2)
+        self.session = Session(self.mode, self.tuning, {}, self._args[3], None)
+        old = self.session.sim
         if self.mode == 'gather':
-            old = self.session.sim
             self.session.sim = LiveGatherSim(self.tuning, self._args[2], old.rng, old.ids)
         else:
-            old = self.session.sim
             self.session.sim = LiveQuanSim(self.tuning, self._args[2], old.rng, old.ids, self._args[4])
         self._sessions['quan-demo' if self._demo_mode else self.mode] = self.session
         self.inputs = LiveInputs()
@@ -211,7 +211,7 @@ class LiveGame:
                     for k, v in stock.items():
                         self.session.sim.stock[k] = self.session.sim.stock.get(k, 0) + v
             else:
-                self.session = Session(mode, self.tuning, {}, self._args[3], stock)
+                self.session = Session(mode, self.tuning, {}, self._args[3], None)
                 old = self.session.sim
                 self.session.sim = (LiveGatherSim(self.tuning, {}, old.rng, old.ids) if mode == 'gather'
                                     else LiveQuanSim(self.tuning, {}, old.rng, old.ids, stock))
@@ -299,7 +299,7 @@ class CampaignLiveGame(LiveGame):
             tuned['quan']['customer_interval_s'] = self.progression['days'][str(self.day)]['customer_interval_s']
         self.mode = mode
         self.tuning = tuned
-        self.session = Session(mode, tuned, scenario, self._args[3], stock)
+        self.session = Session(mode, tuned, {}, self._args[3], None)
         old = self.session.sim
         if mode == 'gather':
             self.session.sim = LiveGatherSim(tuned, scenario, old.rng, old.ids)

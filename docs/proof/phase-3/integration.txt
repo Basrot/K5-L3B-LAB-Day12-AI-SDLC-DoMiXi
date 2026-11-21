@@ -1,0 +1,17 @@
+# Bằng chứng tích hợp Phase 3 — Test Contract v1.2 (TICKET-03)
+
+## 1. Kiểm ngưỡng ươn fresh=30 ở gather (1 tick, không input)
+exit_code=0
+spoiled_event={"type":"event","tick":1,"phase":"gather","name":"spoiled","data":{"item_id":"I1","kind":"ca_linh","location":"hold"}}
+
+## 2. Smoke bàn giao file kho 2 tiến trình (fresh=100, dock frame 0 -> quan --inventory --ticks 0)
+catch.json={"items":[{"id":"I1","kind":"ca_linh","fresh":99.992}]}
+gather_end.data.inventory={"items":[{"id":"I1","kind":"ca_linh","fresh":99.992}]}
+quan_tick0_stock=[{"id":"I1","kind":"ca_linh","fresh":99.992}]
+exact_match_file_vs_quan_tick0=True
+exact_match_file_vs_gather_end=True
+
+## 3. Từ chối kho đếm kiểu cũ v1.1 (thoát mã 2 trước khi tạo JSONL)
+old_v11_exit_code=2
+old_v11_out_created=False
+old_v11_stderr=đầu vào sai: Contract v1.2 yêu cầu items là mảng cá thể [{id, kind, fresh}], không nhận kho đếm

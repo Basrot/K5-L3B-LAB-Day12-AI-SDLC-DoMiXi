@@ -25,12 +25,14 @@ class DivingTest(unittest.TestCase):
         s = Session('gather', self.t, {'player': {'pos': [15, 5]}, 'fish': [{'id': 'F1', 'kind': 'ca_linh', 'pos': [15, 5]}]}, 1)
         rows = s.step(inp('catch'))
         self.assertIn('fish_caught', [e['name'] for e in rows])
-        self.assertEqual(s.sim.hold, ['ca_linh'] * self.t['gather']['fish_yield']['ca_linh'])
+        self.assertEqual([it['kind'] for it in s.sim.hold], ['ca_linh'] * self.t['gather']['fish_yield']['ca_linh'])
+        self.assertEqual([it['id'] for it in s.sim.hold], ['I1', 'I2', 'I3'])
         self.assertGreater(s.sim.catch_cd_ticks, 0)
 
     def test_faint_loses_hold(self):
         s = Session('gather', self.t, {'player': {'pos': [20, 5], 'oxygen_ticks': 0, 'hp': 1,
-            'zero_oxy_ticks': self.t['gather']['choke_interval_ticks'] - 1}, 'hold': ['ca_loc']}, 1)
+            'zero_oxy_ticks': self.t['gather']['choke_interval_ticks'] - 1},
+            'hold': [{'id': 'I1', 'kind': 'ca_loc', 'fresh': 100}]}, 1)
         s.step(inp())
         self.assertEqual(s.sim.reason, 'fainted')
         self.assertEqual(s.sim.hold, [])

@@ -1,12 +1,8 @@
-"""Bộ test đầy đủ cho các tính năng lõi Contract v1.1 (Phase 2):
-  - Gather §E payload chuẩn (gather.amount, fish_caught.yield, hold_full, oxygen_empty, faint LIFO)
-  - Cá bơi 1.5 m/s, phản xạ mép, đổi hướng 120 tick, sinh cá 360 tick
-  - Cá Sấu Năm Chèo M1 (Ngày 1) & M2 (Ngày 3): patrol, chase, hit + rớt floor(giỏ/2) LIFO + recoil + faint(monster)
-  - Vòng ngày `--mode day` (--days 1..5), Shop nâng cấp oxygen/hp áp từ Ngày kế, pause/resumed và hiệu năng
+"""Bộ test đầy đủ cho các tính năng lõi Contract v1.1/v1.2 (Gather cá bơi/sinh, Cá Sấu, --mode day, Shop, pause).
+
+Đã cập nhật fixture `hold`, `lost` LIFO và `gather_end.data.inventory` sang kho cá thể `{id, kind, fresh}` của Contract v1.2.
 """
 
-import math
-import os
 import time
 import unittest
 
@@ -21,16 +17,20 @@ def inp(*edges, move=(0.0, 0.0), buy=None):
     return InputState(move, {}, set(edges), buy=buy)
 
 
+def mk_hold(kinds: list, fresh=100, start_idx=1) -> list:
+    return [{"id": f"I{start_idx + i}", "kind": k, "fresh": fresh} for i, k in enumerate(kinds)]
+
+
 class GatherV11PayloadsFishAndMonsters(unittest.TestCase):
     def setUp(self):
         self.t = load_contract()["tuning"]
 
     def test_gather_event_payloads_match_prd_section_e(self):
-        """Rà chuẩn payload gather/fish_caught/hold_full/oxygen_empty/faint LIFO theo PRD-0 §E."""
-        # gather + hold_full (gather)
+        """Rà chuẩn payload gather/fish_caught/hold_full/oxygen_empty/faint LIFO v1.2."""
+        cap = self.t["gather"]["hold_capacity"]
         sc = {
             "player": {"pos": [12, 0]},
-            "hold": ["ca_loc"] * (self.t["gather"]["hold_capacity"] - 1),
+            "hold": mk_hold(["ca_loc"] * (cap - 1)),
             "random_fish": False,
             "monsters": [],
         }
@@ -38,6 +38,9 @@ class GatherV11PayloadsFishAndMonsters(unittest.TestCase):
         ev1 = s.step(inp("interact"))
         self.assertEqual(ev1[0]["name"], "gather")
         self.assertEqual(ev1[0]["data"], {"node_id": "N1", "kind": "bong_dien_dien", "amount": 1})
+        # Cá thể mới hái có id tiếp nối (I12) và fresh=100 chưa hao ở bước hái
+        self.assertEqual(s.sim.hold[-1]["id"], f"I{cap}")
+        self.assertEqual(s.sim.hold[-1]["fresh"], 100)
 
         # Giờ giỏ đã đầy -> hái nút N2 phát hold_full đủ action/node_id/required/free
         s.sim.pos = [28.0, 0.0]
@@ -48,7 +51,7 @@ class GatherV11PayloadsFishAndMonsters(unittest.TestCase):
         # fish_caught (yield) & hold_full (catch)
         sc_f = {
             "player": {"pos": [15, 5]},
-            "hold": ["ca_loc"] * (self.t["gather"]["hold_capacity"] - 2),
+            "hold": mk_hold(["ca_loc"] * (cap - 2)),
             "fish": [{"id": "F1", "kind": "ca_linh", "pos": [15, 5]}],
             "random_fish": False,
             "monsters": [],
@@ -57,17 +60,17 @@ class GatherV11PayloadsFishAndMonsters(unittest.TestCase):
         ev_full = sf.step(inp("catch"))
         self.assertEqual(ev_full[0]["name"], "hold_full")
         self.assertEqual(ev_full[0]["data"], {"action": "catch", "fish_id": "F1", "required": 3, "free": 2})
-        self.assertEqual(sf.sim.catch_cd_ticks, 0)  # bắt thất bại không đặt hồi chiêu
+        self.assertEqual(sf.sim.catch_cd_ticks, 0)
 
         sf.sim.hold.pop()  # chừa đủ 3 ô
         ev_caught = sf.step(inp("catch"))
         self.assertEqual(ev_caught[0]["name"], "fish_caught")
         self.assertEqual(ev_caught[0]["data"], {"fish_id": "F1", "kind": "ca_linh", "yield": 3})
 
-        # oxygen_empty + choke + faint (lost theo thứ tự LIFO)
+        # oxygen_empty + choke + faint (lost là mảng cá thể theo thứ tự LIFO)
         sc_oxy = {
             "player": {"pos": [20, 5], "oxygen_ticks": 1, "hp": 1},
-            "hold": ["ca_loc", "bong_sung", "keo_neo"],
+            "hold": mk_hold(["ca_loc", "bong_sung", "keo_neo"]),
             "random_fish": False,
             "monsters": [],
         }
@@ -75,13 +78,21 @@ class GatherV11PayloadsFishAndMonsters(unittest.TestCase):
         ev_empty = so.step(inp())
         self.assertEqual(ev_empty[0]["name"], "oxygen_empty")
         self.assertEqual(ev_empty[0]["data"], {"oxygen_ticks": 0})
-        # Oxy chạm 0 ở bước 1 -> ngạt lần đầu ở bước 1 + 59 = 60
+        # Oxy chạm 0 ở bước 1 -> ngạt lần đầu ở bước 60 (60 bước hao 60 * 0.5/60 = 0.5 -> fresh = 99.5 chính xác!)
         for _ in range(58):
             self.assertEqual(so.step(inp()), [])
         ev_faint = so.step(inp())
         self.assertEqual([e["name"] for e in ev_faint], ["choke", "faint", "gather_end"])
-        self.assertEqual(ev_faint[1]["data"], {"cause": "choke", "lost": ["keo_neo", "bong_sung", "ca_loc"], "hp": 0})
-        self.assertEqual(ev_faint[2]["data"], {"reason": "fainted", "inventory": {"items": {}}})
+        self.assertEqual(ev_faint[1]["data"], {
+            "cause": "choke",
+            "lost": [
+                {"id": "I3", "kind": "keo_neo", "fresh": 99.5},
+                {"id": "I2", "kind": "bong_sung", "fresh": 99.5},
+                {"id": "I1", "kind": "ca_loc", "fresh": 99.5},
+            ],
+            "hp": 0,
+        })
+        self.assertEqual(ev_faint[2]["data"], {"reason": "fainted", "inventory": {"items": []}})
 
     def test_fish_swim_reflection_turn_and_scheduled_spawn(self):
         """Cá bơi 1.5 m/s, phản xạ mép, đổi hướng ở bước bơi 120 và sinh thêm ở phase_tick=360."""
@@ -94,12 +105,10 @@ class GatherV11PayloadsFishAndMonsters(unittest.TestCase):
         s = Session("gather", self.t, sc, 11)
         s.step(inp())
         f = s.sim.fish[0]
-        # Đi +0.025m từ 95.99 vượt mép 96.0 -> phản xạ về 95.985 và đảo hướng sang 180°
         self.assertAlmostEqual(f["pos"][0], 95.985, places=3)
         self.assertAlmostEqual(f["heading_deg"], 180.0, places=3)
         self.assertEqual(f["age_ticks"], 1)
 
-        # Chạy tới bước 120 -> đổi hướng trước khi di chuyển; chạy tới bước 360 -> phát fish_spawned
         spawned = []
         for _ in range(359):
             for e in s.step(inp()):
@@ -109,7 +118,6 @@ class GatherV11PayloadsFishAndMonsters(unittest.TestCase):
         self.assertEqual(spawned[0]["tick"], 360)
         self.assertEqual(len(s.sim.fish), 2)
 
-        # random_fish=false: cá đứng yên và không sinh thêm
         sc_static = {
             "player": {"pos": [2, 0]},
             "fish": [{"id": "F1", "kind": "ca_linh", "pos": [50.0, 5.0], "heading_deg": 0.0}],
@@ -123,10 +131,10 @@ class GatherV11PayloadsFishAndMonsters(unittest.TestCase):
         self.assertEqual(len(s2.sim.fish), 1)
 
     def test_crocodile_patrol_chase_hit_lifo_loss_recoil_and_monster_faint(self):
-        """Cá Sấu M1 tuần tra, đuổi ở d>=10, chạm mất 1 HP + rớt floor(giỏ/2) LIFO + bất tử 90 + recoil 60 + ngất monster."""
+        """Cá Sấu M1 tuần tra, đuổi ở d>=10, chạm mất 1 HP + rớt floor(giỏ/2) cá thể LIFO + recoil + ngất monster."""
         sc = {
             "player": {"pos": [60.0, 24.0], "hp": 2},
-            "hold": ["ca_loc", "bong_sung", "ca_keo", "keo_neo", "ca_linh"],  # 5 ô -> rớt floor(5/2)=2 (LIFO)
+            "hold": mk_hold(["ca_loc", "bong_sung", "ca_keo", "keo_neo", "ca_linh"]),  # 5 ô -> rớt floor(5/2)=2 (LIFO)
             "random_fish": False,
             "monsters": [{
                 "id": "M1", "kind": "ca_sau", "pos": [60.0, 24.0],
@@ -138,14 +146,16 @@ class GatherV11PayloadsFishAndMonsters(unittest.TestCase):
         self.assertEqual([e["name"] for e in ev1], ["monster_hit"])
         self.assertEqual(ev1[0]["data"]["monster_id"], "M1")
         self.assertEqual(ev1[0]["data"]["hp"], 1)
-        self.assertEqual(ev1[0]["data"]["lost"], ["ca_linh", "keo_neo"])
-        self.assertEqual(s.sim.hold, ["ca_loc", "bong_sung", "ca_keo"])
+        self.assertEqual(ev1[0]["data"]["lost"], [
+            {"id": "I5", "kind": "ca_linh", "fresh": 99.992},
+            {"id": "I4", "kind": "keo_neo", "fresh": 99.992},
+        ])
+        self.assertEqual([it["id"] for it in s.sim.hold], ["I1", "I2", "I3"])
         self.assertEqual(s.sim.invuln_ticks, 90)
         self.assertEqual(s.sim.monsters[0]["state"], "recoil")
         self.assertEqual(s.sim.monsters[0]["state_ticks_left"], 60)
-        self.assertEqual(s.sim.monsters[0]["recoil_dir"], [1.0, 0.0])  # trùng tâm dùng +x
+        self.assertEqual(s.sim.monsters[0]["recoil_dir"], [1.0, 0.0])
 
-        # Trong 60 bước recoil: lùi 2/60 m mỗi bước, không hit; hết recoil về patrol
         x_before = s.sim.monsters[0]["pos"][0]
         for _ in range(60):
             evs = s.step(inp())
@@ -153,36 +163,39 @@ class GatherV11PayloadsFishAndMonsters(unittest.TestCase):
         self.assertAlmostEqual(s.sim.monsters[0]["pos"][0], x_before + 2.0, places=3)
         self.assertEqual(s.sim.monsters[0]["state"], "patrol")
 
-        # Chờ hết bất tử (còn 30 tick) rồi để Cá Sấu chạm lần 2 -> HP về 0 -> faint(cause="monster")
+        # Chờ hết bất tử rồi để Cá Sấu chạm lần 2 (bước 62: 62/120 = 0.51666 -> 99.483)
         s.sim.invuln_ticks = 0
         s.sim.pos = list(s.sim.monsters[0]["pos"])
         ev2 = s.step(inp())
         self.assertEqual([e["name"] for e in ev2], ["monster_hit", "faint", "gather_end"])
-        # Giỏ còn 3 -> hit rớt floor(3/2)=1 (ca_keo), faint bỏ nốt 2 ô còn lại LIFO (bong_sung, ca_loc)
-        self.assertEqual(ev2[0]["data"]["lost"], ["ca_keo"])
-        self.assertEqual(ev2[1]["data"], {"cause": "monster", "lost": ["bong_sung", "ca_loc"], "hp": 0})
-        self.assertEqual(ev2[2]["data"], {"reason": "fainted", "inventory": {"items": {}}})
+        self.assertEqual(ev2[0]["data"]["lost"], [{"id": "I3", "kind": "ca_keo", "fresh": 99.483}])
+        self.assertEqual(ev2[1]["data"], {
+            "cause": "monster",
+            "lost": [
+                {"id": "I2", "kind": "bong_sung", "fresh": 99.483},
+                {"id": "I1", "kind": "ca_loc", "fresh": 99.483},
+            ],
+            "hp": 0,
+        })
+        self.assertEqual(ev2[2]["data"], {"reason": "fainted", "inventory": {"items": []}})
 
 
 class DayModeShopAndPauseV11(unittest.TestCase):
     def test_day_cli_flags_and_multi_day_shop_upgrade_activation(self):
-        """Chạy `--mode day --days 2` hộp đen: mua nâng cấp oxygen/hp trong Shop Ngày 1 -> có hiệu lực ở Ngày 2."""
+        """Chạy `--mode day --days 2` hộp đen: mua nâng cấp Shop + cấp id mới cho hold Ngày 2."""
         with Workdir() as w:
-            # --days bị cấm ở mode gather/quan và ngoài [1, 5]
             self.assertEqual(run_headless("--mode", "gather", "--seed", "1", "--days", "1", "--ticks", "0", "--out", w.path("b1.jsonl"))[0], 2)
             self.assertEqual(run_headless("--mode", "day", "--seed", "1", "--days", "6", "--ticks", "0", "--out", w.path("b2.jsonl"))[0], 2)
 
-            # Dựng Ngày 1 có sẵn 450k tiền (đủ mua oxygen cấp 1 = 200 và hp cấp 1 = 250), quán ngắn 2 tick
             sc = write_json(w.path("day.json"), {
                 "day": {"money": 450, "earned": 450},
-                "gather": {"hold": ["ca_loc"], "random_fish": False, "monsters": []},
+                "gather": {
+                    "hold": [{"id": "I1", "kind": "ca_loc", "fresh": 100}],
+                    "random_fish": False,
+                    "monsters": [],
+                },
                 "quan": {"time_left_ticks": 2, "random_customers": False},
             })
-            # Tick 0: E cập bến -> chuyển sang quan ngay tick 1 (phase_tick=0)
-            # Tick 1, 2: quan chạy 2 tick -> hết ca -> chuyển sang shop ở tick 3 (phase_tick=0)
-            # Tick 3: mua oxygen (200)
-            # Tick 4: mua hp (250) + shop_done cùng bước -> đóng Shop Ngày 1 -> dựng Ngày 2 ngay tick 5!
-            # Tick 5: cập bến Ngày 2 -> quan 2 tick (6, 7) -> shop Ngày 2 -> tick 8 shop_done -> days_complete!
             inp_file = write_json(w.path("in.json"), frames(
                 {"tick": 0, "interact": True},
                 {"tick": 1, "interact": False},
@@ -199,33 +212,35 @@ class DayModeShopAndPauseV11(unittest.TestCase):
             self.assertEqual(code, 0, err)
             rows = read_jsonl(out)
 
-            # Kiểm tra tick 0 có day_start -> day_plan -> phase_start(gather)
             t0_evs = [r for r in rows if r["type"] == "event" and r["tick"] == 0]
             self.assertEqual([e["name"] for e in t0_evs], ["day_start", "day_plan", "phase_start"])
             self.assertEqual(t0_evs[1]["day"], 1)
 
-            # Kiểm tra mua nâng cấp thành công, money về 0 nhưng earned & score giữ nguyên
             bought = events(rows, "bought")
             self.assertEqual(len(bought), 2)
             self.assertEqual(bought[0]["data"], {"upgrade": "oxygen", "level": 1, "price": 200, "money": 250})
             self.assertEqual(bought[1]["data"], {"upgrade": "hp", "level": 1, "price": 250, "money": 0})
 
-            # Snapshot tick 4 (khi đang trong Shop sau mua oxygen): upgrades có oxygen:1 nhưng active_upgrades vẫn {}
             snaps = {s["tick"]: s for s in snapshots(rows)}
+            # Ngày 1 tick 0 giữ nguyên id I1 từ scenario.gather.hold
+            self.assertEqual(snaps[0]["hold"], [{"id": "I1", "kind": "ca_loc", "fresh": 100}])
+            # Tick 3 (vào Shop) và tick 4 (sau 1 tick Shop): hàng ở Shop KHÔNG hao tươi!
+            self.assertEqual(snaps[3]["phase"], "shop")
             self.assertEqual(snaps[4]["phase"], "shop")
+            self.assertEqual(snaps[3]["stock"], snaps[4]["stock"])
             self.assertEqual(snaps[4]["upgrades"], {"oxygen": 1})
             self.assertEqual(snaps[4]["active_upgrades"], {})
             self.assertEqual(snaps[4]["earned"], 450)
 
-            # Snapshot tick 5 (vừa chuyển sang Ngày 2 gather): active_upgrades áp dụng -> oxygen_max_ticks=2700, hp_max=4!
+            # Snapshot tick 5 (Ngày 2 gather): active_upgrades áp dụng & hold Ngày 2 được cấp id mới I2!
             self.assertEqual(snaps[5]["day"], 2)
             self.assertEqual(snaps[5]["phase"], "gather")
             self.assertEqual(snaps[5]["phase_tick"], 0)
+            self.assertEqual(snaps[5]["hold"], [{"id": "I2", "kind": "ca_loc", "fresh": 100}])
             self.assertEqual(snaps[5]["active_upgrades"], {"hp": 1, "oxygen": 1})
             self.assertEqual(snaps[5]["player"]["oxygen_max_ticks"], 2700)
             self.assertEqual(snaps[5]["player"]["hp_max"], 4)
 
-            # Dòng end: days_completed=2, reason=days_complete
             end = rows[-1]
             self.assertEqual(end["type"], "end")
             self.assertEqual(end["reason"], "days_complete")
@@ -241,18 +256,6 @@ class DayModeShopAndPauseV11(unittest.TestCase):
                 "gather": {"random_fish": False, "monsters": []},
                 "quan": {"time_left_ticks": 1, "random_customers": False},
             })
-            # Tick 0: pause -> paused (sim_tick=0)
-            # Tick 1: giữ pause=false, interact=true -> vẫn paused nên BỎ QUA interact!
-            # Tick 2: pause=true -> resumed + interact=true (đã giữ sẵn không tạo cạnh mới) -> chạy gather bước 1
-            # Tick 3: pause=false, interact=false
-            # Tick 4: interact=true -> docked -> quan
-            # Tick 5: quan hết giờ -> shop
-            # Tick 6: buy oxygen (max_level)
-            # Tick 7: buy hp (funds)
-            # Tick 8: buy unknown_item (unknown)
-            # Tick 9: pause trong Shop (đóng băng timer shop!)
-            # Tick 10: đang pause -> buy hp bị bỏ qua
-            # Tick 11: pause=true -> resumed + shop_done -> đóng Shop
             inp_file = write_json(w.path("in.json"), frames(
                 {"tick": 0, "pause": True},
                 {"tick": 1, "pause": False, "interact": True},
@@ -275,16 +278,13 @@ class DayModeShopAndPauseV11(unittest.TestCase):
             rows = read_jsonl(out)
             snaps = {s["tick"]: s for s in snapshots(rows)}
 
-            # Tick 1 và 2 đang pause -> sim_tick vẫn 0, state="paused"
             self.assertEqual(snaps[1]["state"], "paused")
             self.assertEqual(snaps[1]["sim_tick"], 0)
             self.assertEqual(snaps[2]["state"], "paused")
             self.assertEqual(snaps[2]["sim_tick"], 0)
-            # Tick 3 resumed -> sim_tick tăng lên 1
             self.assertEqual(snaps[3]["state"], "playing")
             self.assertEqual(snaps[3]["sim_tick"], 1)
 
-            # Kiểm 3 lý do buy_failed (lệnh buy ở tick 10 khi pause bị bỏ qua nên chỉ có 3 buy_failed)
             fails = [e["data"] for e in events(rows, "buy_failed")]
             self.assertEqual(fails, [
                 {"action": "oxygen", "reason": "max_level"},
