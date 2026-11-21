@@ -1,0 +1,13 @@
+{
+  "capacity": 8,
+  "pickup_radius": 2.5,
+  "animation_ticks": 36,
+  "collectibles": [
+    {"kind":"shell","label":"Vỏ sò ánh ngọc","pos":[10,6]},
+    {"kind":"pearl","label":"Ngọc trai sông","pos":[24,14]},
+    {"kind":"charm","label":"Bùa cá vàng","pos":[42,25]},
+    {"kind":"shell","label":"Vỏ sò ánh ngọc","pos":[58,19]},
+    {"kind":"pearl","label":"Ngọc trai sông","pos":[76,26]},
+    {"kind":"charm","label":"Bùa cá vàng","pos":[90,12]}
+  ]
+}

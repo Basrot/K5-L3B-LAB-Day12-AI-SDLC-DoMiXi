@@ -1,0 +1,581 @@
+{
+  "gather": {
+    "duration_s": 420,
+    "bounds": {
+      "x": [
+        0,
+        220
+      ],
+      "d": [
+        0,
+        40
+      ]
+    },
+    "swim_speed": 7,
+    "oxygen_max_s": 55,
+    "hold_capacity": 24,
+    "fish_yield": {
+      "ca_linh": 3,
+      "ca_loc": 1,
+      "ca_ro": 1,
+      "ca_bong": 2,
+      "tom_song": 2,
+      "cua_dong": 1,
+      "ca_chach": 1,
+      "ca_vang": 1
+    }
+  },
+  "weather": {
+    "sun_ticks": 720,
+    "rain_ticks": 1800
+  },
+  "pursuer": {
+    "label": "Chú Áo Vàng",
+    "speed": 5.2,
+    "spawn_distance": 16,
+    "hit_radius": 1.6,
+    "damage": 1,
+    "invuln_ticks": 150,
+    "retreat_distance": 12
+  },
+  "catalog": {
+    "ca_linh": {
+      "label": "Cá linh",
+      "cell": 0,
+      "yield": 3
+    },
+    "ca_loc": {
+      "label": "Cá lóc",
+      "cell": 1,
+      "yield": 1
+    },
+    "ca_ro": {
+      "label": "Cá rô đồng",
+      "cell": 2,
+      "yield": 1
+    },
+    "ca_bong": {
+      "label": "Cá bống",
+      "cell": 3,
+      "yield": 2
+    },
+    "tom_song": {
+      "label": "Tôm sông",
+      "cell": 4,
+      "yield": 2
+    },
+    "cua_dong": {
+      "label": "Cua đồng",
+      "cell": 5,
+      "yield": 1
+    },
+    "ca_chach": {
+      "label": "Cá chạch",
+      "cell": 6,
+      "yield": 1
+    },
+    "ca_vang": {
+      "label": "Cá vàng",
+      "cell": 7,
+      "yield": 1
+    },
+    "shell": {
+      "label": "Vỏ sò ánh ngọc",
+      "cell": 8
+    },
+    "pearl": {
+      "label": "Ngọc trai sông",
+      "cell": 9
+    },
+    "charm": {
+      "label": "Bùa cá vàng",
+      "cell": 10
+    },
+    "ceramic": {
+      "label": "Bình gốm cổ",
+      "cell": 11
+    }
+  },
+  "fish": [
+    {
+      "id": "F7",
+      "kind": "ca_linh",
+      "pos": [
+        12,
+        4
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F8",
+      "kind": "ca_loc",
+      "pos": [
+        18.3,
+        11
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F9",
+      "kind": "ca_ro",
+      "pos": [
+        24.6,
+        18
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F10",
+      "kind": "ca_bong",
+      "pos": [
+        30.9,
+        25
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F11",
+      "kind": "tom_song",
+      "pos": [
+        37.2,
+        32
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F12",
+      "kind": "cua_dong",
+      "pos": [
+        43.5,
+        10
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F13",
+      "kind": "ca_chach",
+      "pos": [
+        49.8,
+        17
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F14",
+      "kind": "ca_vang",
+      "pos": [
+        56.1,
+        24
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F15",
+      "kind": "ca_linh",
+      "pos": [
+        62.4,
+        31
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F16",
+      "kind": "ca_loc",
+      "pos": [
+        68.69999999999999,
+        9
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F17",
+      "kind": "ca_ro",
+      "pos": [
+        75,
+        16
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F18",
+      "kind": "ca_bong",
+      "pos": [
+        81.3,
+        23
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F19",
+      "kind": "tom_song",
+      "pos": [
+        87.6,
+        30
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F20",
+      "kind": "cua_dong",
+      "pos": [
+        93.89999999999999,
+        8
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F21",
+      "kind": "ca_chach",
+      "pos": [
+        100.2,
+        15
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F22",
+      "kind": "ca_vang",
+      "pos": [
+        106.5,
+        22
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F23",
+      "kind": "ca_linh",
+      "pos": [
+        112.8,
+        29
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F24",
+      "kind": "ca_loc",
+      "pos": [
+        119.1,
+        7
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F25",
+      "kind": "ca_ro",
+      "pos": [
+        125.39999999999999,
+        14
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F26",
+      "kind": "ca_bong",
+      "pos": [
+        131.7,
+        21
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F27",
+      "kind": "tom_song",
+      "pos": [
+        138,
+        28
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F28",
+      "kind": "cua_dong",
+      "pos": [
+        144.29999999999998,
+        6
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F29",
+      "kind": "ca_chach",
+      "pos": [
+        150.6,
+        13
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F30",
+      "kind": "ca_vang",
+      "pos": [
+        156.9,
+        20
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F31",
+      "kind": "ca_linh",
+      "pos": [
+        163.2,
+        27
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F32",
+      "kind": "ca_loc",
+      "pos": [
+        169.5,
+        5
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F33",
+      "kind": "ca_ro",
+      "pos": [
+        175.79999999999998,
+        12
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F34",
+      "kind": "ca_bong",
+      "pos": [
+        182.1,
+        19
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F35",
+      "kind": "tom_song",
+      "pos": [
+        188.4,
+        26
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F36",
+      "kind": "cua_dong",
+      "pos": [
+        194.7,
+        4
+      ],
+      "heading_deg": 180
+    },
+    {
+      "id": "F37",
+      "kind": "ca_chach",
+      "pos": [
+        201,
+        11
+      ],
+      "heading_deg": 0
+    },
+    {
+      "id": "F38",
+      "kind": "ca_vang",
+      "pos": [
+        207.29999999999998,
+        18
+      ],
+      "heading_deg": 180
+    }
+  ],
+  "collectibles": [
+    {
+      "kind": "ceramic",
+      "label": "Bình gốm cổ",
+      "pos": [
+        115,
+        33
+      ]
+    },
+    {
+      "kind": "pearl",
+      "label": "Ngọc trai sông",
+      "pos": [
+        144,
+        27
+      ]
+    },
+    {
+      "kind": "charm",
+      "label": "Bùa cá vàng",
+      "pos": [
+        172,
+        35
+      ]
+    },
+    {
+      "kind": "shell",
+      "label": "Vỏ sò ánh ngọc",
+      "pos": [
+        204,
+        22
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "N5",
+      "kind": "bong_sung",
+      "pos": [
+        95,
+        0
+      ]
+    },
+    {
+      "id": "N6",
+      "kind": "bong_dien_dien",
+      "pos": [
+        130,
+        0
+      ]
+    },
+    {
+      "id": "N7",
+      "kind": "bong_sung",
+      "pos": [
+        165,
+        0
+      ]
+    },
+    {
+      "id": "N8",
+      "kind": "bong_dien_dien",
+      "pos": [
+        205,
+        0
+      ]
+    }
+  ],
+  "quan": {
+    "duration_s": 360,
+    "tables": [
+      {
+        "id": "T1",
+        "label": "Bàn Sen Hồng",
+        "pos": [
+          6,
+          2
+        ]
+      },
+      {
+        "id": "T2",
+        "label": "Bàn Dừa Nước",
+        "pos": [
+          12,
+          2
+        ]
+      },
+      {
+        "id": "T3",
+        "label": "Bàn Bến Trăng",
+        "pos": [
+          6,
+          6
+        ]
+      },
+      {
+        "id": "T4",
+        "label": "Bàn Lục Bình",
+        "pos": [
+          12,
+          6
+        ]
+      }
+    ],
+    "stoves": [
+      {
+        "id": "B1",
+        "pos": [
+          2,
+          8
+        ]
+      },
+      {
+        "id": "B2",
+        "pos": [
+          2,
+          4
+        ]
+      }
+    ]
+  },
+  "demo_stock": {
+    "ca_loc": 5,
+    "ca_linh": 15,
+    "bong_sung": 10,
+    "bong_dien_dien": 5,
+    "tom_song": 8,
+    "ca_ro": 5,
+    "cua_dong": 4,
+    "ca_bong": 6
+  },
+  "menu": {
+    "tom_hap": {
+      "label": "Tôm sông hấp",
+      "recipe": {
+        "tom_song": 2
+      },
+      "cook_s": 4,
+      "price": 65
+    },
+    "ca_ro_chien": {
+      "label": "Cá rô chiên giòn",
+      "recipe": {
+        "ca_ro": 1
+      },
+      "cook_s": 5,
+      "price": 55
+    },
+    "cua_hap": {
+      "label": "Cua đồng hấp",
+      "recipe": {
+        "cua_dong": 1
+      },
+      "cook_s": 5,
+      "price": 70
+    },
+    "ca_bong_kho": {
+      "label": "Cá bống kho",
+      "recipe": {
+        "ca_bong": 2
+      },
+      "cook_s": 6,
+      "price": 75
+    }
+  },
+  "dish_labels": {
+    "ca_loc_nuong_trui": "Cá lóc nướng trui",
+    "goi_bong_sung": "Gỏi bông súng",
+    "lau_ca_linh_dien_dien": "Lẩu cá linh điên điển"
+  },
+  "diners": [
+    {
+      "label": "Bà Sáu",
+      "sprite": 0,
+      "drink": "Trà sen"
+    },
+    {
+      "label": "Chú Ba",
+      "sprite": 1,
+      "drink": "Dừa tươi"
+    },
+    {
+      "label": "Anh Tư",
+      "sprite": 2,
+      "drink": "Trà đá"
+    },
+    {
+      "label": "Chị Mai",
+      "sprite": 3,
+      "drink": "Trà hoa"
+    }
+  ]
+}

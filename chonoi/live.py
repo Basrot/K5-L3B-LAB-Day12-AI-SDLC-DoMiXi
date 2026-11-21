@@ -27,6 +27,11 @@ from .inputs import LiveInputs
 from .inventory import read_inventory
 from .runner import Session
 from .scenario import load_scenario
+from .sim.live_gather import LiveGatherSim
+from .sim.live_quan import LiveQuanSim
+from .live_world import live_tuning
+from .inventory import hold_to_items
+from urllib.parse import unquote
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 TICK_S = 1.0 / 60.0
@@ -38,6 +43,7 @@ class LiveGame:
     """Một lượt chơi + luồng nền bước 60 tick/s. Mọi truy cập trạng thái đi qua khóa."""
 
     def __init__(self, mode, tuning, scenario, seed, inventory=None, inventory_out=None):
+        tuning = live_tuning(tuning)
         self._args = (mode, tuning, scenario, seed, inventory)
         self.mode = mode
         self.tuning = tuning
@@ -45,10 +51,19 @@ class LiveGame:
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = None
+        self._sessions = {}
+        self._demo_mode = False
         self._reset()
 
     def _reset(self):
         self.session = Session(*self._args)
+        if self.mode == 'gather':
+            old = self.session.sim
+            self.session.sim = LiveGatherSim(self.tuning, self._args[2], old.rng, old.ids)
+        else:
+            old = self.session.sim
+            self.session.sim = LiveQuanSim(self.tuning, self._args[2], old.rng, old.ids, self._args[4])
+        self._sessions['quan-demo' if self._demo_mode else self.mode] = self.session
         self.inputs = LiveInputs()
         self.events = []
         self._saved = False
@@ -101,7 +116,7 @@ class LiveGame:
     def state_json(self) -> bytes:
         with self._lock:
             snap = self.session.snapshot()
-            snap["meta"] = self.tuning[self.mode]
+            snap["meta"] = self.session.sim.t
             snap["events"] = list(self.events)
             snap["finished"] = self.session.done
             snap["reason"] = self.session.sim.reason if self.session.done else None
@@ -126,7 +141,49 @@ class LiveGame:
 
     def restart(self):
         with self._lock:
+            if self.mode == 'quan' and not self._demo_mode:
+                # Restart the shift using its unspent stock, not just the last delivery.
+                self._args = (self.mode, self.tuning, {}, self._args[3], dict(self.session.sim.stock))
             self._reset()
+
+    def switch_mode(self, mode, demo=False):
+        if mode not in ('gather', 'quan'):
+            raise ValueError('mode phải là gather hoặc quan')
+        if demo and mode != 'quan':
+            raise ValueError('demo chỉ dành cho quan')
+        with self._lock:
+            if mode == self.mode and self._demo_mode == demo:
+                return
+            stock = None
+            if self.mode == 'gather' and mode == 'quan' and not demo:
+                stock = hold_to_items(self.session.sim.hold)
+                self.session.sim.hold.clear()
+            self.mode = mode
+            self._demo_mode = demo
+            key = 'quan-demo' if demo else mode
+            cached = self._sessions.get(key)
+            if cached is not None and mode == 'quan' and cached.done:
+                remaining = dict(cached.sim.stock)
+                for k, v in (stock or {}).items():
+                    remaining[k] = remaining.get(k, 0) + v
+                stock = remaining
+                cached = None
+            if cached is not None:
+                self.session = cached
+                if stock is not None:
+                    for k, v in stock.items():
+                        self.session.sim.stock[k] = self.session.sim.stock.get(k, 0) + v
+            else:
+                self.session = Session(mode, self.tuning, {}, self._args[3], stock)
+                old = self.session.sim
+                self.session.sim = (LiveGatherSim(self.tuning, {}, old.rng, old.ids) if mode == 'gather'
+                                    else LiveQuanSim(self.tuning, {}, old.rng, old.ids, stock))
+                self._sessions[key] = self.session
+            self._args = (mode, self.tuning, {}, self._args[3], stock)
+            self.inputs = LiveInputs()
+            self.events = []
+            self.error = None
+            self._saved = False
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -154,6 +211,20 @@ class _Handler(BaseHTTPRequestHandler):
                     self._send(200, f.read(), "text/html; charset=utf-8")
             except OSError:
                 self._send(404, b'{"error":"thieu index.html"}')
+        elif path.startswith('/art/'):
+            name = unquote(path[len('/art/'):])
+            allowed = {'01-ut-sen.png', '02-items-food.png', '03-props-npcs.png', '04-river-scene.png',
+                       '05-restaurant-scene.png', '10-underwater-animation.png', '11-rain-pursuer.png',
+                       '12-river-life.png', '13-dining-cast.png', '14-dishes.png'}
+            if name not in allowed:
+                self._send(404, b'{}')
+                return
+            asset = os.path.join(os.path.dirname(WEB_DIR), '..', 'assets', 'art-pack', name)
+            try:
+                with open(asset, 'rb') as f:
+                    self._send(200, f.read(), 'image/png')
+            except OSError:
+                self._send(404, b'{}')
         else:
             self._send(404, b'{"error":"khong co"}')
 
@@ -175,6 +246,11 @@ class _Handler(BaseHTTPRequestHandler):
                 self.game.set_input(body)
             elif path == "/restart":
                 self.game.restart()
+            elif path == '/mode':
+                body = json.loads(raw.decode('utf-8') or '{}')
+                if not isinstance(body, dict) or not isinstance(body.get('demo', False), bool):
+                    raise ValueError('body sai')
+                self.game.switch_mode(body.get('mode'), body.get('demo', False))
             else:
                 self._send(404, b'{"error":"khong co"}')
                 return

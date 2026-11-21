@@ -26,4 +26,10 @@
 - Sáng tạo thêm được khuyến khích nhưng phải tắt ở headless (xem README, mục "Tự do sáng tạo").
 
 ## Skills / hooks của nhóm
+
+## Animation và đồ nhặt live
+- Atlas: `assets/art-pack/10-underwater-animation.png` (4 cột × 4 hàng).
+- Đồ sưu tập chỉ dùng trong `sim/live_gather.py`, cấu hình ở `chonoi/live_gather.json`; không đưa vào headless hoặc schema kho.
+- Starter `live.py`/`web/index.html` đã sửa để phục vụ ảnh và render animation; không thay đổi CLI headless.
+- Windows: `python -X utf8 -m chonoi.live --mode gather`; test `python tools/test_windows.py`.
 - (Ghi tên và khi nào dùng; tối thiểu 2 skill/hook/command nhóm tự viết, đặt ở `.agents/skills/` hoặc tương đương.)

@@ -25,6 +25,22 @@ Game cần chế độ **headless** theo Test Contract (`python3 -m chonoi.headl
 
 ## Tự do sáng tạo
 
+### Lặn có animation (bản live)
+
+Trên Windows: `python -X utf8 -m chonoi.live --mode gather`, mở địa chỉ in ra.
+Nhấn **S / ↓** để lặn, **W / ↑** để nổi, **A/D** để bơi ngang;
+**Space** bắt cá dưới nước, **E** nhặt đồ gần nhân vật / hái cây trên mặt nước / cập bến.
+Oxy hồi ở mặt nước; hết oxy sẽ mất máu dần, ngất làm mất giỏ nguyên liệu. **R** chơi lại.
+
+Animation dùng atlas `assets/art-pack/10-underwater-animation.png`: 4 hàng lần lượt
+lặn, bơi chìm, nhặt đồ, nổi; mỗi hàng 4 frame. Renderer chọn hàng từ vận tốc và trạng thái
+nhặt, đổi frame theo tick, lật ảnh khi bơi trái. Không cần chạy nhiều ảnh bằng tay.
+
+Vỏ sò, ngọc trai, bùa cá là bộ sưu tập sáng tạo **chỉ trong live**, không nằm trong kho
+nguyên liệu và không đổi công thức/điểm contract. Dữ liệu ở `chonoi/live_gather.json`.
+Kiểm tra trên Windows: `python tools/test_windows.py` (dùng Python hiện tại thay alias
+`python3` trong bộ nhớ khi chạy test; không sửa contract).
+
 Ngoài phần đề yêu cầu, nhóm được **thêm** nhân vật, loài cá/cây, sinh vật, món, bản đồ, cơ chế, câu chuyện, đồ họa, âm nhạc… với ba điều kiện: **không phá phần cố định** (tắt ở headless), ghi mục **"Sáng tạo của nhóm"** trong README của nhóm, và **làm lõi đúng trước**.
 
 ## Lịch 3 giờ
