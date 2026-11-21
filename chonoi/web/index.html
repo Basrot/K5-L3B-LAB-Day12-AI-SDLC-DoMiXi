@@ -27,11 +27,18 @@
   #campaign-home[hidden]{display:none}
   #campaign-evening{position:fixed;right:14px;top:14px;z-index:4;background:#355b74}
   #campaign-evening[hidden]{display:none}
+  #contrast-toggle{position:fixed;right:14px;bottom:42px;z-index:6;background:#162833;color:#fff7d1;border:1.5px solid #ffd54f}
+  body.high-contrast{background:#000 !important;color:#fff !important}
+  body.high-contrast button{background:#000 !important;color:#ffea00 !important;border:2px solid #ffea00 !important;font-weight:700}
+  body.high-contrast button:hover{background:#222 !important;color:#fff !important}
+  body.high-contrast #contrast-toggle{background:#ffea00 !important;color:#000 !important;border:2px solid #fff !important}
+  body.high-contrast .campaign-panel,body.high-contrast dialog{background:#000 !important;color:#fff !important;border:3px solid #ffea00 !important;box-shadow:0 0 0 2px #000}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <nav aria-label="Chọn cảnh"><button data-mode="gather">☀ Sông</button><button data-mode="quan">♨ Quán · đem giỏ vào</button><button data-mode="quan" data-demo="true">Quán mẫu</button><button id="sound-toggle" aria-pressed="false">🔇 Âm thanh</button></nav>
+<button id="contrast-toggle" type="button" aria-pressed="false" title="Bật/tắt chế độ tương phản cao (phím H)">◐ Tương phản cao (H)</button>
 <button id="campaign-home" type="button" hidden>⌂ Về sảnh</button>
 <button id="campaign-evening" type="button" hidden>🌙 Về quán buổi tối</button>
 <div id="campaign-ui" aria-live="polite"></div>
@@ -429,11 +436,33 @@ async function flush() {
   }
   inflight = false;
 }
+let highContrast = false;
+const contrastButton = document.getElementById('contrast-toggle');
+function setHighContrast(enabled) {
+  highContrast = Boolean(enabled);
+  document.body.classList.toggle('high-contrast', highContrast);
+  if (contrastButton) {
+    contrastButton.setAttribute('aria-pressed', String(highContrast));
+    contrastButton.textContent = highContrast ? '☀ Tương phản cao: BẬT (H)' : '◐ Tương phản cao (H)';
+  }
+  try { localStorage.setItem('chonoi_high_contrast', highContrast ? '1' : '0'); } catch (_) {}
+}
+if (contrastButton) {
+  contrastButton.addEventListener('click', () => { setHighContrast(!highContrast); contrastButton.blur(); });
+}
+try {
+  if (localStorage.getItem('chonoi_high_contrast') === '1' || new URLSearchParams(location.search).has('hc')) setHighContrast(true);
+} catch (_) {}
 function keyName(e) { return e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase(); }
 addEventListener("keydown", (e) => {
+  const k = keyName(e);
+  if (k === "h" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    setHighContrast(!highContrast);
+    e.preventDefault();
+    return;
+  }
   if (transitioning) { e.preventDefault(); return; }
   if (snap?.campaign && snap.campaign.screen !== 'playing') return;
-  const k = keyName(e);
   if (e.repeat) { if (k === " " || k.startsWith("arrow")) e.preventDefault(); return; }
   if (MOVE_KEYS[k]) { down.add(MOVE_KEYS[k]); e.preventDefault(); }
   else if (k === "e") down.add("interact");
@@ -497,10 +526,32 @@ function text(s, x, y, o = {}) {
   ctx.fillText(s, x, y);
 }
 function bar(x, y, w, h, frac, color, label) {
-  ctx.fillStyle = "rgba(0,0,0,.45)"; ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = color; ctx.fillRect(x, y, w * Math.max(0, Math.min(1, frac)), h);
-  ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
-  if (label) text(label, x + w / 2, y + h - 3, { size: 11, align: "center" });
+  ctx.fillStyle = highContrast ? "#000000" : "rgba(0,0,0,.45)"; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = highContrast ? (frac < 0.35 ? "#ffea00" : "#00f5ff") : color;
+  ctx.fillRect(x, y, w * Math.max(0, Math.min(1, frac)), h);
+  ctx.strokeStyle = highContrast ? "#ffffff" : "rgba(255,255,255,.5)";
+  ctx.lineWidth = highContrast ? 2 : 1;
+  ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
+  if (label) text(label, x + w / 2, y + h - 3, { size: 11, align: "center", color: highContrast ? "#ffffff" : "#e8eef2" });
+}
+function alertBanner(msg, w, y, opts = {}) {
+  const bw = Math.min(w - 24, opts.width || 560);
+  const bh = opts.height || 36;
+  const bx = w / 2 - bw / 2;
+  ctx.save();
+  ctx.fillStyle = highContrast ? "#000000" : (opts.bg || "rgba(155, 22, 22, 0.94)");
+  ctx.beginPath();
+  ctx.roundRect(bx, y, bw, bh, 8);
+  ctx.fill();
+  ctx.strokeStyle = highContrast ? "#ffea00" : (opts.border || "#fde047");
+  ctx.lineWidth = highContrast ? 3.5 : 2.2;
+  ctx.stroke();
+  ctx.font = `700 ${opts.size || 15}px system-ui, sans-serif`;
+  ctx.fillStyle = highContrast ? "#ffea00" : (opts.color || "#fff7d6");
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(msg, w / 2, y + bh / 2 + 1);
+  ctx.restore();
 }
 function fmtTime(ticks) {
   const s = Math.ceil(ticks / 60);
@@ -602,6 +653,10 @@ function drawGather(w, h) {
     ctx.drawImage(riverArt, 0, 0, riverArt.naturalWidth, split, ox, top, viewWidth*s, oy-top);
     ctx.drawImage(riverArt, 0, split, riverArt.naturalWidth, riverArt.naturalHeight-split,
                   ox, oy, viewWidth*s, D*s);
+  }
+  if (highContrast) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.56)';
+    ctx.fillRect(ox, top, viewWidth * s, (D + SKY) * s);
   }
   // tia nắng xuyên nước (tự dịu/ẩn khi mưa, tuyết hoặc sương mù)
   if (!['rain', 'fog', 'snow'].includes(snap.weather)) {
@@ -926,12 +981,49 @@ function drawGather(w, h) {
     ctx.restore();
   });
   ctx.restore();
+  // Cảnh báo 1 (Oxy sắp hết) & Cảnh báo 2 (Thủy quái / nguy hiểm gần) — có biểu tượng + chữ rõ ràng, tương thích Tương phản cao
   const lowOxygen = p && p.oxygen_max_ticks && p.oxygen_ticks <= p.oxygen_max_ticks * 0.25 && !p.at_surface;
   if (lowOxygen) {
-    const pulse = 0.12 + (Math.floor(snap.tick / 8) % 2) * 0.08;
-    ctx.fillStyle = `rgba(190, 18, 28, ${pulse})`; ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = `rgba(255, 62, 72, ${0.45 + pulse})`; ctx.lineWidth = 8; ctx.strokeRect(4, 4, w - 8, h - 8);
-    text('SẮP HẾT OXY!', w / 2, 118, { size: 21, align: 'center', color: '#ffe0df' });
+    const blink = Math.floor(snap.tick / 8) % 2;
+    const pulse = 0.12 + blink * 0.08;
+    ctx.fillStyle = highContrast ? `rgba(255, 234, 0, ${0.14 + blink * 0.12})` : `rgba(190, 18, 28, ${pulse})`;
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = highContrast ? (blink ? '#ffea00' : '#ffffff') : `rgba(255, 62, 72, ${0.45 + pulse})`;
+    ctx.lineWidth = highContrast ? 10 : 8;
+    ctx.strokeRect(5, 5, w - 10, h - 10);
+    alertBanner('🫧 ⚠️ SẮP HẾT OXY! NỔI LÊN NGAY!', w, 98, {
+      width: 480, height: 38, size: 17,
+      bg: 'rgba(165, 16, 24, 0.95)', border: '#ffea00', color: '#fff5f5',
+    });
+  }
+  let nearestThreat = null;
+  if (p && p.pos) {
+    const checkThreat = (pos, label, limit, chasing = false) => {
+      if (!pos) return;
+      const dx = pos[0] - p.pos[0], dd = pos[1] - p.pos[1];
+      const dist = Math.hypot(dx, dd);
+      if (chasing || dist <= limit) {
+        if (!nearestThreat || dist < nearestThreat.dist) {
+          const dir = Math.abs(dx) >= Math.abs(dd) ? (dx >= 0 ? 'bên phải →' : '← bên trái') : (dd >= 0 ? 'phía dưới ↓' : '↑ phía trên');
+          nearestThreat = { label, dist, dir, chasing };
+        }
+      }
+    };
+    (snap.monsters || []).forEach(m => checkThreat(m.pos, 'Thủy quái', 16, m.state === 'chase'));
+    if (snap.pursuer?.active && !(snap.pursuer.hug_ticks_left > 0)) {
+      checkThreat(snap.pursuer.pos, snap.pursuer.label || 'Chú Áo Vàng', 22, true);
+    }
+    (snap.hazards || []).forEach(hz => {
+      if (!p.at_surface) checkThreat(hz.pos, hz.kind === 'jellyfish' ? 'Sứa điện' : 'Cá độc', 7.5, false);
+    });
+  }
+  if (nearestThreat) {
+    const warnY = lowOxygen ? 144 : 98;
+    alertBanner(
+      `⚠️ THỦY QUÁI GẦN: ${nearestThreat.label} (${nearestThreat.dir} · ${nearestThreat.dist.toFixed(1)}m) — TRÁNH NGAY!`,
+      w, warnY,
+      { width: 620, height: 36, size: 14.5, bg: 'rgba(138, 36, 12, 0.95)', border: '#fde047', color: '#fff7d6' }
+    );
   }
   if (snap.pursuer?.hug_ticks_left > 0) {
     ctx.fillStyle = 'rgba(30,12,8,.88)'; ctx.fillRect(w/2-270,h/2-45,540,90);
@@ -1004,14 +1096,14 @@ function pill(s, x, y, o = {}) {
   ctx.font = `600 ${sz}px system-ui, sans-serif`;
   const padX = 7, h = sz + 7;
   const w = ctx.measureText(s).width + padX * 2;
-  ctx.fillStyle = o.bg || "rgba(26, 15, 7, 0.78)";
+  ctx.fillStyle = highContrast ? "#000000" : (o.bg || "rgba(26, 15, 7, 0.78)");
   ctx.beginPath();
   ctx.roundRect(x - w / 2, y - h / 2, w, h, 6);
   ctx.fill();
-  ctx.strokeStyle = o.border || "rgba(240, 200, 128, 0.55)";
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = highContrast ? (o.hcBorder || "#ffea00") : (o.border || "rgba(240, 200, 128, 0.55)");
+  ctx.lineWidth = highContrast ? 2 : 1;
   ctx.stroke();
-  text(s, x, y + sz * 0.35, { size: sz, align: "center", color: o.color || "#fff5da" });
+  text(s, x, y + sz * 0.35, { size: sz, align: "center", color: highContrast ? (o.hcColor || "#ffffff") : (o.color || "#fff5da") });
 }
 
 // ----- cảnh QUÁN: nhìn từ trên xuống, x sang phải, z lên (bắc) -----
@@ -1029,7 +1121,11 @@ function drawQuan(w, h) {
     ctx.fillStyle = "#c9a36b"; ctx.fillRect(sx(0), sy(Z), X * s, Z * s);
     for(let z=0;z<Z;z+=.5){ctx.strokeStyle='rgba(80,42,18,.15)';ctx.beginPath();ctx.moveTo(sx(0),sy(z));ctx.lineTo(sx(X),sy(z));ctx.stroke();}
   }
-  ctx.strokeStyle = "#6b4a2b"; ctx.lineWidth = 3; ctx.strokeRect(sx(0), sy(Z), X * s, Z * s);
+  if (highContrast) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.54)";
+    ctx.fillRect(sx(0), sy(Z), X * s, Z * s);
+  }
+  ctx.strokeStyle = highContrast ? "#ffea00" : "#6b4a2b"; ctx.lineWidth = 3; ctx.strokeRect(sx(0), sy(Z), X * s, Z * s);
   pill('QUÁN ÚT SEN · NHÀ BÈ CHỢ NỔI', sx(X / 2), sy(Z) + 18, { size: 13, color: '#ffe8a8' });
   // bếp (khớp 2 bếp lò trong nền ảnh quán)
   (snap.stoves || []).forEach((st) => {
@@ -1190,7 +1286,25 @@ function drawQuan(w, h) {
         sprite(dishesArt, cell % 4, Math.floor(cell / 4), 4, 2, tx - 0.1 * s, ty - 0.05 * s, 0.88 * s);
       } else if (c.patience_ticks_left !== undefined) {
         const frac = c.patience_ticks_left / patMax;
-        bar(labelX - 0.75 * s, ty + 0.34 * s, 1.5 * s, 5, frac, frac < 0.25 ? '#ef4444' : frac < 0.5 ? '#f59e0b' : '#4ade80');
+        bar(labelX - 0.75 * s, ty + 0.34 * s, 1.5 * s, highContrast ? 7 : 5, frac, frac < 0.25 ? '#ef4444' : frac < 0.5 ? '#f59e0b' : '#4ade80');
+        if (frac <= 0.35) {
+          const blink = Math.floor(snap.tick / 10) % 2 === 0;
+          ctx.save();
+          ctx.strokeStyle = highContrast ? (blink ? '#ffea00' : '#ffffff') : (blink ? '#ef4444' : '#fde047');
+          ctx.lineWidth = highContrast ? 4 : 3;
+          ctx.beginPath();
+          ctx.arc(tx, ty, 0.88 * s + Math.sin(snap.tick / 5) * 3, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+          pill(`💢 Sắp giận! ${Math.ceil(c.patience_ticks_left / 60)}s`, labelX, ty - (isHandTarget ? 1.32 : 0.96) * s, {
+            size: 10.5,
+            color: '#fff5f5',
+            hcColor: '#ffea00',
+            border: '#ef4444',
+            hcBorder: '#ffea00',
+            bg: 'rgba(153, 27, 27, 0.94)',
+          });
+        }
       }
       pill((isVip ? '×1.5 · ' : '') + dishName(c.dish_id), labelX, ty + 0.62 * s, {
         size: 9.5,
@@ -1343,8 +1457,22 @@ function drawQuan(w, h) {
     text((isDanger ? '⚠️ ' : (isSuccess ? '⭐ ' : (isJack ? '🎤 ' : '📢 '))) + msg, w / 2, top + 25, {
       size: 13,
       align: 'center',
-      color: '#fff'
+      color: highContrast ? '#ffea00' : '#fff'
     });
+  }
+  // Cảnh báo 3 (Khách sắp giận — patience <= 35%)
+  const angryCustomers = (snap.customers || [])
+    .filter(c => c.state !== 'eating' && c.patience_ticks_left !== undefined && (c.patience_ticks_left / patMax) <= 0.35)
+    .sort((a, b) => a.patience_ticks_left - b.patience_ticks_left);
+  if (angryCustomers.length) {
+    const urgent = angryCustomers[0];
+    const remSec = Math.max(1, Math.ceil(urgent.patience_ticks_left / 60));
+    const extra = angryCustomers.length > 1 ? ` (+${angryCustomers.length - 1} bàn khác)` : '';
+    alertBanner(
+      `💢 KHÁCH SẮP GIẬN: ${urgent.label || urgent.id} (${urgent.table_id}) · còn ${remSec}s!${extra}`,
+      w, specialEv ? top + 40 : top + 6,
+      { width: 600, height: 34, size: 14, bg: 'rgba(153, 27, 27, 0.95)', border: '#fde047', color: '#fff7ed' }
+    );
   }
 
   // người chơi (phục vụ di chuyển trên sàn gỗ quán, có bóng chân & nhịp bước)

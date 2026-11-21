@@ -41,7 +41,9 @@ class QuanV11ManifestAndMenu(unittest.TestCase):
         self.t = self.contract["tuning"]
 
     def test_v11_contract_numbers_and_day_plan_totals(self):
-        self.assertEqual(self.contract["contract_version"], "1.2")
+        self.assertEqual(self.contract["contract_version"], "1.3")
+        self.assertIn("bench_cmd", self.contract)
+        self.assertIn("soak_cmd", self.contract)
         self.assertEqual(self.t["freshness"], {
             "initial": 100,
             "gather_decay_per_s": 0.5,

@@ -2,6 +2,19 @@
 
 Tất cả thay đổi đáng chú ý của dự án **Quán Ăn Chợ Nổi (Nhóm DoMiXi)** được ghi nhận tại đây.
 
+## [v1.0.0] — Phase 4: Phát hành chính thức (Test Contract v1.3)
+
+### Added
+- `game.contract.json` & `chonoi/__init__.py`: nâng `contract_version` lên `"1.3"`, khai báo `bench_cmd` (`python3 -m chonoi.bench`) và `soak_cmd` (`python3 -m chonoi.soak`) ở gốc hợp đồng; giữ nguyên toàn bộ gameplay, tuning, kho cá thể và JSONL theo Contract v1.2.
+- `chonoi/bench.py`: công cụ đo hiệu năng có render 1280×720 cảnh buổi sáng lõi (độ tươi, cá bơi, Cá Sấu Năm Chèo, Út Sen đứng yên ở bến; làm nóng 3 giây, đo `--duration` giây; cửa sổ `tkinter.Canvas` thật kèm bộ đệm RGB 1280×720 dự phòng không cần X11), xuất nguyên tử 5 trường `avg_fps`, `p1_low_fps`, `frames`, `measured_s`, `load_ms`.
+- `chonoi/soak.py`: công cụ kiểm thử bền bỉ headless nhiều ngày (`--seed 7 --days 10 --out soak.json`) bằng bot tất định hoàn toàn đi qua `gather → quan → shop` trong một tiến trình duy nhất; `DaySim` lặp kế hoạch `day_plan` D1–D5 ở Ngày 6–10 và bảo toàn tiền, tổng thu, uy tín, nâng cấp, số Ngày và `IdAllocator` xuyên suốt.
+- `chonoi/web/index.html`: bổ sung **3 cảnh báo trực quan bằng chữ và biểu tượng** (Thủy quái gần có hướng & khoảng cách, Oxy sắp hết, Khách sắp giận kèm số giây còn lại) và **chế độ Tương phản cao** (nút góc dưới phải + phím tắt `H`).
+- `LICENSE`, `docs/release/v1.0.0.md`, `docs/plan/phase-4.md`, `docs/verification/phase-4.md`, `docs/proof/phase-4/*`, `tests/test_v13_bench_soak.py`.
+
+### Changed
+- Cập nhật `README.md` (yêu cầu môi trường, ≤ 3 lệnh chạy từ clone sạch trên macOS/Linux & Windows, điều khiển `H`, lệnh test/headless/bench/soak và giới hạn đã biết), rà `CREDITS.md` và cập nhật `docs/retro.md`, `docs/clarify.md`, `docs/ai-usage-log.md`.
+- `.gitignore`: bổ sung bỏ qua `dist/` và `*.log` để giữ repo sạch khi đóng gói phát hành.
+
 ## [v1.2.0] — Phase 3: Change Request "Mùa Nước Nổi" (Test Contract v1.2)
 
 ### BREAKING CHANGES (thay đổi phá vỡ tương thích ngược với v1.0 / v1.1)

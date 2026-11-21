@@ -5,3 +5,5 @@ __pycache__/
 .DS_Store
 .chonoi-save.json
 .chonoi-save.tmp
+dist/
+*.log

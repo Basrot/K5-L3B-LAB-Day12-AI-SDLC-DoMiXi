@@ -131,8 +131,12 @@ class DaySim:
         evs, self._init_events = self._init_events, []
         return evs
 
+    def _plan_day_key(self) -> int:
+        # Kế hoạch D1–D5 lặp lại ở Ngày 6–10, 11–15,... (Contract v1.3 mục 2 Soak)
+        return ((self.day - 1) % 5) + 1
+
     def current_plan(self) -> dict:
-        plan = self.day_plans[self.day]
+        plan = self.day_plans[self._plan_day_key()]
         return {"dishes": dict(plan["dishes"]), "ingredients": dict(plan["ingredients"])}
 
     def _start_day(self, day_num: int, out_events: list):
@@ -180,7 +184,7 @@ class DaySim:
             # Bàn giao nguyên cá thể + độ tươi (Fraction chính xác), không hao thêm ở tick chuyển pha
             inv = self.sub.inventory_items()
             quan_sc = self.scenario.get("quan", {})
-            plan = self.day_plans[self.day]
+            plan = self.day_plans[self._plan_day_key()]
             self.sub = QuanSim(
                 self.tuning,
                 quan_sc,
