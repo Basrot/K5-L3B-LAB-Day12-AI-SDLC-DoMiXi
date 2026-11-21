@@ -561,7 +561,7 @@ def main(argv=None) -> int:
     p.add_argument("--mode", default="campaign", choices=["gather", "quan", "campaign"])
     p.add_argument('--standalone', action='store_true', help='Chơi riêng gather/quan, bỏ qua intro')
     p.add_argument("--seed", type=int, default=1)
-    p.add_argument("--port", type=int, default=8000, help="0 = cổng ngẫu nhiên")
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8000")), help="0 = cổng ngẫu nhiên; mặc định đọc PORT của dịch vụ hosting")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--scenario")
     p.add_argument("--inventory", help="chỉ với quan: nạp kho từ file")
