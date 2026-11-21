@@ -1,13 +1,13 @@
 # TEAM
 
-**Tên nhóm:** DoMiXi  **Số người:** 4  (khớp `team_size` trong `game.contract.json`)
+**Tên nhóm:** DoMiXi **Số người:** 4 (khớp `team_size` trong `game.contract.json`)
 
-| Thành viên | GitHub handle | Module chính | Vai quy trình | Người dự phòng cho |
-|---|---|---|---|---|
-| Nam Nguyễn | `Basrot` | `sim/gather` | Integrator (giữ `docs/contracts/`, gắn tag) | `BFNGOC2` |
-| BFNGOC | `BFNGOC2` | `client/ui` | Scrum/Release (đóng gói, demo, UI live) | `Basrot` |
-| Đào Ngọc Hân | `daongochan` | `sim/quan` | PO + QA lead (`docs/clarify.md`, `verification`, `proof`) | `DucTai2804` |
-| Trần Trọng Đức Tài | `DucTai2804` | `qa` | Tech lead quán (bếp/kinh tế, sự kiện live & QA Lát 4) | `daongochan` |
+| Thành viên         | GitHub handle | Module chính | Vai quy trình                                             | Người dự phòng cho |
+| ------------------ | ------------- | ------------ | --------------------------------------------------------- | ------------------ |
+| Nam Nguyễn         | `Basrot`      | `sim/gather` | Integrator (giữ `docs/contracts/`, gắn tag)               | `BFNGOC2`          |
+| Thiều Thế Ngọc     | `BFNGOC2`     | `client/ui`  | Scrum/Release (đóng gói, demo, UI live)                   | `Basrot`           |
+| Đào Ngọc Hân       | `daongochan`  | `sim/quan`   | PO + QA lead (`docs/clarify.md`, `verification`, `proof`) | `DucTai2804`       |
+| Trần Trọng Đức Tài | `DucTai2804`  | `qa`         | Tech lead quán (bếp/kinh tế, sự kiện live & QA Lát 4)     | `daongochan`       |
 
 **Vai quy trình:** PO (đầu mối hỏi giảng viên, giữ `docs/clarify.md`) · Integrator (giữ `docs/contracts/`, gắn tag) · QA lead · Scrum/Release. Có thể kiêm.
 
