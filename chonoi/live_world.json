@@ -460,49 +460,46 @@
       {
         "id": "T1",
         "label": "Bàn Sen Hồng",
+        "painted": true,
         "pos": [
-          6,
-          2
+          12.8,
+          6.5
         ]
       },
       {
         "id": "T2",
         "label": "Bàn Dừa Nước",
+        "painted": true,
         "pos": [
-          12,
-          2
+          13.0,
+          4.9
         ]
       },
       {
         "id": "T3",
         "label": "Bàn Bến Trăng",
+        "painted": true,
         "pos": [
-          6,
-          6
-        ]
-      },
-      {
-        "id": "T4",
-        "label": "Bàn Lục Bình",
-        "pos": [
-          12,
-          6
+          13.1,
+          3.4
         ]
       }
     ],
     "stoves": [
       {
         "id": "B1",
+        "painted": true,
         "pos": [
-          2,
-          8
+          2.6,
+          7.2
         ]
       },
       {
         "id": "B2",
+        "painted": true,
         "pos": [
-          2,
-          4
+          4.0,
+          7.2
         ]
       }
     ]
@@ -554,7 +551,10 @@
   "dish_labels": {
     "ca_loc_nuong_trui": "Cá lóc nướng trui",
     "goi_bong_sung": "Gỏi bông súng",
-    "lau_ca_linh_dien_dien": "Lẩu cá linh điên điển"
+    "lau_ca_linh_dien_dien": "Lẩu cá linh điên điển",
+    "canh_chua_ca_loc": "Canh chua cá lóc",
+    "ca_keo_nuong": "Cá kèo nướng muối ớt",
+    "lau_mam": "Lẩu mắm miền Tây"
   },
   "diners": [
     {
