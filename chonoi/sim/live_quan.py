@@ -5,11 +5,11 @@ from ..ids import sort_by_id, id_key
 from ..live_world import load_world
 from ..inventory import hold_to_items
 from .freshness import new_item, decay, snapshot_items
+from .reservations import Reservations, make_reservations
 
 
-class LiveQuanSim(QuanSim):
+class LiveQuanSim(Reservations, QuanSim):
     _live_mode = True
-
     def __init__(self, tuning, scenario, streams, ids, inventory=None):
         self.world = load_world()
         self.demo_stock = inventory is None and 'stock' not in scenario
@@ -85,7 +85,32 @@ class LiveQuanSim(QuanSim):
             'timer': int(round(self.ca_cfg.get('patrol_cooldown_s', 25) * 60)),
             'action_ticks': 0
         }
+
+        # Ca Sĩ Jack (J97) configuration and state machine
+        self.jack_cfg = self.world.get('jack', {
+            'label': 'Ca Sĩ Jack (J97)', 'song_title': 'Thiên Lý Ơi', 'speed': 2.2,
+            'entrance_pos': [8.0, 0.5], 'stage_pos': [5.5, 5.2],
+            'first_spawn_s': 35, 'cooldown_s': 45, 'sing_duration_s': 26,
+            'tip_bonus': 20, 'fan_donation': 40,
+            'quote_arrive': 'Jack chào cả nhà quán Út Sen! Nay tặng quán bài Thiên Lý Ơi nha!',
+            'quote_singing': 'Thiên lý ơi, em có nghe chăng lời ru chiều nay... 🎵',
+            'quote_leave': 'Cảm ơn quý khán giả quán Út Sen rất nhiều! Hẹn gặp lại nhé!'
+        })
+        self.jack = {
+            'active': False,
+            'state': 'inactive',
+            'pos': list(self.jack_cfg.get('entrance_pos', [8.0, 0.5])),
+            'target': list(self.jack_cfg.get('stage_pos', [5.5, 5.2])),
+            'facing_left': True,
+            'timer': int(round(self.jack_cfg.get('first_spawn_s', 35) * 60)),
+            'action_ticks': 0,
+            'fan_donated': False
+        }
         self.invuln_ticks = 0
+        self.reservations = make_reservations(self, self.menu)
+        for reservation in self.reservations:
+            if reservation['arrival_tick'] <= round(self.world['reservations']['table_hold_s']*60):
+                reservation['state'] = 'holding'
 
     def _reserve_fresh(self):
         threshold = self.world['freshness']['spoiled_below']
@@ -115,7 +140,8 @@ class LiveQuanSim(QuanSim):
 
     def _order(self, events):
         occupied = {c['table_id'] for c in self.customers}
-        tables = [t for t in sort_by_id(self.tables) if t['id'] not in occupied]
+        held = {r['table_id'] for r in self.reservations if r['state'] in ('holding', 'waiting')}
+        tables = [t for t in sort_by_id(self.tables) if t['id'] not in occupied and t['id'] not in held]
         if not tables:
             return
         available = {}
@@ -158,33 +184,57 @@ class LiveQuanSim(QuanSim):
         self.time_left_ticks = max(0, self.time_left_ticks - 1)
         decay(self, self.fresh_items, self.world['freshness']['quan_decay'], events)
         self._reserve_fresh()
+        self._step_reservations(events)
         self.invuln_ticks = max(0, self.invuln_ticks - 1)
 
-        # Xử lý hành vi Khá Bảnh & Chú Công An
+        # Xử lý hành vi Khá Bảnh & Chú Công An & Ca Sĩ Jack
         self._step_kha_banh(events)
         self._step_cong_an(events)
+        self._step_jack(events)
 
         for st in self.stoves:
             if st['state'] == 'cooking':
                 st['cook_ticks_left'] = max(0, st['cook_ticks_left'] - 1)
                 if st['cook_ticks_left'] == 0:
                     st['state'] = 'ready'
+                    st['ready_ticks'] = 0
                     events.append(('dish_ready', {'stove_id': st['id']}))
+            elif st['state'] == 'ready' and self.t.get('burn_s') is not None:
+                st['ready_ticks'] = st.get('ready_ticks', 0) + 1
+                if st['ready_ticks'] >= round(self.t['burn_s']*60):
+                    customer = next((c for c in self.customers if c['id'] == st.get('customer_id')), None)
+                    events.append(('dish_burnt', {'stove_id':st['id'], 'order_status':'failed'}))
+                    if customer and customer.get('reservation_id'):
+                        reservation = next(r for r in self.reservations if r['id'] == customer['reservation_id'])
+                        self._fail_reservation(reservation, 'burnt', events)
+                    else:
+                        st.update(state='idle', dish=None, customer_id=None)
         for c in sort_by_id(list(self.customers)):
             if c['state'] == 'eating':
                 c['eat_ticks_left'] -= 1
                 if c['eat_ticks_left'] <= 0:
                     price = c.get('base_price', self.menu[c['dish_id']]['price'])
-                    amount = price + c.get('tip', 0)
+                    base_tip = c.get('tip', 0)
+                    jack_bonus = self.jack_cfg.get('tip_bonus', 20) if (self.jack['active'] and self.jack['state'] == 'singing') else 0
+                    amount = price + base_tip + jack_bonus
                     self.money += amount
                     self.earned += amount
                     self.shift_earned += amount
-                    self.reputation = min(self.t['reputation_max'], self.reputation + (self.t['tip_reputation'] if c.get('tip', 0) else 0))
+                    self.reputation = min(self.t['reputation_max'], self.reputation + (self.t['tip_reputation'] if base_tip else 0))
                     self.customers.remove(c)
-                    events.append(('paid', {'customer_id': c['id'], 'dish_id': c['dish_id'], 'amount': amount}))
+                    ev_data = {'customer_id': c['id'], 'dish_id': c['dish_id'], 'amount': amount}
+                    if jack_bonus:
+                        ev_data['jack_bonus'] = jack_bonus
+                    events.append(('paid', ev_data))
             else:
-                c['patience_ticks_left'] = max(0, c['patience_ticks_left'] - 1)
+                # Khi Jack đang hát, khách say sưa nghe nhạc nên kiên nhẫn giảm chậm hơn 50%
+                if not (self.jack['active'] and self.jack['state'] == 'singing' and self.elapsed % 2 == 0):
+                    c['patience_ticks_left'] = max(0, c['patience_ticks_left'] - 1)
                 if c['patience_ticks_left'] == 0:
+                    if c.get('reservation_id'):
+                        reservation = next(r for r in self.reservations if r['id'] == c['reservation_id'])
+                        self._fail_reservation(reservation, 'patience', events)
+                        continue
                     self.customers.remove(c)
                     self.reputation = max(self.t['reputation_min'], self.reputation + self.t['left_reputation_delta'])
                     for st in self.stoves:
@@ -212,9 +262,19 @@ class LiveQuanSim(QuanSim):
         if self.elapsed >= self.t['first_customer_tick'] and (self.elapsed - self.t['first_customer_tick']) % interval == 0:
             self._order(events)
         if self.time_left_ticks == 0:
+            for reservation in self.reservations:
+                self._fail_reservation(reservation, 'closing', events)
             self.done = True
             self.reason = 'time'
             events.append(('quan_end', {'money': self.money, 'earned': self.earned, 'reputation': self.reputation}))
+        elif not self.customers and self.elapsed > self.t['first_customer_tick']:
+            usable = {}
+            for item in self.fresh_items:
+                if item['fresh_units'] >= self.world['freshness']['spoiled_below']:
+                    usable[item['kind']] = usable.get(item['kind'],0)+1
+            if not any(all(usable.get(kind,0)>=count for kind,count in dish['recipe'].items()) for dish in self.menu.values()):
+                # Close through the regular final-tick path, including reservation cleanup.
+                self.time_left_ticks = 1
         return events
 
     def _interact_police(self, events) -> bool:
@@ -409,6 +469,79 @@ class LiveQuanSim(QuanSim):
             else:
                 self._move_actor(ca, dx, dz, dist, self.ca_cfg['speed'])
 
+    def _step_jack(self, events):
+        jk = self.jack
+        if jk['action_ticks'] > 0:
+            jk['action_ticks'] -= 1
+
+        ent = self.jack_cfg.get('entrance_pos', [8.0, 0.5])
+        stage = self.jack_cfg.get('stage_pos', [5.5, 5.2])
+
+        if jk['state'] == 'inactive':
+            jk['timer'] -= 1
+            if jk['timer'] <= 0:
+                jk['active'] = True
+                jk['state'] = 'entering'
+                jk['pos'] = list(ent)
+                jk['target'] = list(stage)
+                jk['fan_donated'] = False
+                events.append(('jack_arrived', {
+                    'label': self.jack_cfg.get('label', 'Ca Sĩ Jack (J97)'),
+                    'quote': self.jack_cfg.get('quote_arrive', 'Jack chào cả nhà quán Út Sen! Nay tặng quán bài Thiên Lý Ơi nha!')
+                }))
+            return
+
+        pos = jk['pos']
+        target = jk['target']
+        dx = target[0] - pos[0]
+        dz = target[1] - pos[1]
+        dist = math.hypot(dx, dz)
+
+        if jk['state'] == 'entering':
+            if dist < 0.3:
+                jk['state'] = 'singing'
+                jk['timer'] = int(round(self.jack_cfg.get('sing_duration_s', 26) * 60))
+                events.append(('jack_sing_start', {
+                    'song': self.jack_cfg.get('song_title', 'Thiên Lý Ơi'),
+                    'quote': self.jack_cfg.get('quote_singing', 'Thiên lý ơi, em có nghe chăng lời ru chiều nay... 🎵')
+                }))
+            else:
+                self._move_actor(jk, dx, dz, dist, self.jack_cfg['speed'])
+
+        elif jk['state'] == 'singing':
+            jk['timer'] -= 1
+            # Hiệu ứng nhịp biểu diễn đổi hướng nhẹ nhàng
+            jk['facing_left'] = (self.elapsed // 120) % 2 == 0
+
+            # Điểm giữa bài hát: khán giả cổ vũ tặng tiền trực tiếp cho quán
+            half_dur = int(round(self.jack_cfg.get('sing_duration_s', 26) * 30))
+            if jk['timer'] <= half_dur and not jk.get('fan_donated'):
+                donation = self.jack_cfg.get('fan_donation', 40)
+                self.money += donation
+                self.earned += donation
+                self.shift_earned += donation
+                self.reputation = min(self.t['reputation_max'], self.reputation + 0.2)
+                jk['fan_donated'] = True
+                events.append(('jack_fan_donation', {
+                    'amount': donation,
+                    'quote': 'Khán giả say sưa nghe Thiên Lý Ơi tặng thêm 40k cho quán!'
+                }))
+
+            if jk['timer'] <= 0:
+                jk['state'] = 'leaving'
+                jk['target'] = list(ent)
+                events.append(('jack_left', {
+                    'quote': self.jack_cfg.get('quote_leave', 'Cảm ơn quý khán giả quán Út Sen rất nhiều! Hẹn gặp lại nhé!')
+                }))
+
+        elif jk['state'] == 'leaving':
+            if pos[1] <= 0.8 or dist < 0.4:
+                jk['active'] = False
+                jk['state'] = 'inactive'
+                jk['timer'] = int(round(self.jack_cfg.get('cooldown_s', 45) * 60))
+            else:
+                self._move_actor(jk, dx, dz, dist, self.jack_cfg['speed'])
+
     @staticmethod
     def _move_actor(actor, dx, dz, dist, speed):
         if dist > 0.001:
@@ -431,6 +564,8 @@ class LiveQuanSim(QuanSim):
                     c = waiting[0]
                     selected = [i for i in self.fresh_items if i['id'] in c['reserved_ids']]
                     c['base_price'] = self.menu[c['dish_id']]['price'] * sum(i['fresh_units'] for i in selected) // (len(selected) * self.world['freshness']['maximum'])
+                    if c.get('reservation_id'):
+                        c['base_price'] = math.floor(c['base_price'] * self.world['reservations']['price_multiplier'])
                     self.fresh_items = [i for i in self.fresh_items if i['id'] not in c['reserved_ids']]
                     c['reserved_ids'] = []
                     for kind, count in c['reserved'].items():
@@ -448,10 +583,16 @@ class LiveQuanSim(QuanSim):
                          tip=math.floor(c.get('base_price', self.menu[c['dish_id']]['price']) * self.t['tip_rate']) if ratio >= self.t['tip_min_patience_ratio'] else 0)
                 self.hand = None
                 events.append(('served', {'customer_id': c['id']}))
+                if c.get('reservation_id'):
+                    reservation = next(r for r in self.reservations if r['id'] == c['reservation_id'])
+                    reservation['state'] = 'served'
+                    events.append(('reservation_served', {'id': reservation['id']}))
 
     def snapshot(self):
         snap = super().snapshot()
         snap['fresh_items'] = snapshot_items(self.fresh_items)
+        snap['menu_catalog'] = {key: dict(dish) for key,dish in self.menu.items()}
+        snap['reservations'] = [dict(r) for r in sort_by_id(self.reservations)]
         labels = {k: v.get('label', self.world['dish_labels'].get(k, k)) for k, v in self.menu.items()}
         for table, source in zip(snap['tables'], self.tables):
             table['label'] = source['label']
@@ -463,6 +604,7 @@ class LiveQuanSim(QuanSim):
             elapsed=self.elapsed,
             kha_banh=dict(self.kha_banh),
             cong_an=dict(self.cong_an),
+            jack=dict(self.jack),
             invuln_ticks=self.invuln_ticks
         )
         return snap

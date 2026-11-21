@@ -1,12 +1,17 @@
-# Lệnh: python tools/test_windows.py
+# Lệnh: python tools/test_windows.py (sau khi gộp origin/main 2ceb34b)
 # Thời điểm: 2026-11-21 (Phase 3 — Contract v1.2)
 
+test_cannot_equip_unowned_level (test_campaign_flow.CampaignFlowTest.test_cannot_equip_unowned_level) ... ok
+test_equipped_upgrades_apply_to_morning (test_campaign_flow.CampaignFlowTest.test_equipped_upgrades_apply_to_morning) ... ok
+test_intro_equipment_morning_evening_results_shop (test_campaign_flow.CampaignFlowTest.test_intro_equipment_morning_evening_results_shop) ... ok
+test_remove_lamp_and_slow_fish_reflection (test_campaign_flow.CampaignFlowTest.test_remove_lamp_and_slow_fish_reflection) ... ok
 test_catch_underwater_and_cooldown (test_diving.DivingTest.test_catch_underwater_and_cooldown) ... ok
 test_faint_loses_hold (test_diving.DivingTest.test_faint_loses_hold) ... ok
 test_headless_has_no_live_collectibles (test_diving.DivingTest.test_headless_has_no_live_collectibles) ... ok
 test_live_pickup_capacity_and_range (test_diving.DivingTest.test_live_pickup_capacity_and_range) ... ok
 test_live_pickup_once_and_restart (test_diving.DivingTest.test_live_pickup_once_and_restart) ... ok
 test_oxygen_underwater_and_refill (test_diving.DivingTest.test_oxygen_underwater_and_refill) ... ok
+test_main_starts_with_windows_legacy_console_encoding (test_live.LiveServerTest.test_main_starts_with_windows_legacy_console_encoding) ... ok
 test_state_input_and_clean_stop (test_live.LiveServerTest.test_state_input_and_clean_stop) ... ok
 test_catching_poison_fish_does_not_add_it_to_inventory (test_live_world.LiveWorldTest.test_catching_poison_fish_does_not_add_it_to_inventory) ... ok
 test_demo_does_not_replace_real_restaurant (test_live_world.LiveWorldTest.test_demo_does_not_replace_real_restaurant) ... ok
@@ -16,12 +21,15 @@ test_finished_restaurant_opens_new_shift_with_stock (test_live_world.LiveWorldTe
 test_fresh_reservation_replaces_spoiled_and_prices_used_items (test_live_world.LiveWorldTest.test_fresh_reservation_replaces_spoiled_and_prices_used_items) ... ok
 test_freshness_decay_spoil_once_and_delivery (test_live_world.LiveWorldTest.test_freshness_decay_spoil_once_and_delivery) ... ok
 test_hazards_stack_with_snow_and_can_cause_faint (test_live_world.LiveWorldTest.test_hazards_stack_with_snow_and_can_cause_faint) ... ok
+test_jack_performance_and_tip_bonus (test_live_world.LiveWorldTest.test_jack_performance_and_tip_bonus) ... ok
 test_kha_banh_and_cong_an_interactions (test_live_world.LiveWorldTest.test_kha_banh_and_cong_an_interactions) ... ok
 test_live_gather_hud_has_flower_icons_stack_counts_and_oxygen_warning (test_live_world.LiveWorldTest.test_live_gather_hud_has_flower_icons_stack_counts_and_oxygen_warning) ... ok
+test_live_menu_uses_all_harvested_ingredients (test_live_world.LiveWorldTest.test_live_menu_uses_all_harvested_ingredients) ... ok
 test_mode_switch_transfers_gather_stock (test_live_world.LiveWorldTest.test_mode_switch_transfers_gather_stock) ... ok
 test_no_food_has_no_unfulfillable_orders (test_live_world.LiveWorldTest.test_no_food_has_no_unfulfillable_orders) ... ok
 test_pursuer_hit_starts_a_visible_hug_scene (test_live_world.LiveWorldTest.test_pursuer_hit_starts_a_visible_hug_scene) ... ok
 test_rain_chase_contact_costs_one_hp_with_grace (test_live_world.LiveWorldTest.test_rain_chase_contact_costs_one_hp_with_grace) ... ok
+test_reservations_hold_arrive_serve_and_fail_once (test_live_world.LiveWorldTest.test_reservations_hold_arrive_serve_and_fail_once) ... ok
 test_restaurant_cook_serve_eat_and_pay (test_live_world.LiveWorldTest.test_restaurant_cook_serve_eat_and_pay) ... ok
 test_weather_rotation_includes_every_kind_and_is_seeded (test_live_world.LiveWorldTest.test_weather_rotation_includes_every_kind_and_is_seeded) ... ok
 test_wind_reverses_movement_and_preserves_catch (test_live_world.LiveWorldTest.test_wind_reverses_movement_and_preserves_catch) ... ok
@@ -138,6 +146,6 @@ test_ticket03_exact_threshold_30_spoil_once_in_gather (test_v12_freshness.Ticket
 Fixture mẫu nguyên văn từ TICKET-03: fresh=30 ở gather -> phát spoiled đúng tick 1 và KHÔNG lặp tick 2. ... ok
 
 ----------------------------------------------------------------------
-Ran 94 tests in 34.999s
+Ran 102 tests in 35.362s
 
 OK

@@ -10,6 +10,40 @@ def inp(*edges):
     return InputState((0, 0), {}, set(edges))
 
 class LiveWorldTest(unittest.TestCase):
+    def test_reservations_hold_arrive_serve_and_fail_once(self):
+        q = LiveGame('quan', load_contract()['tuning'], {}, 3).session.sim
+        dish = 'ca_loc_nuong_trui'
+        q.reservations = [{'id':'R1','table_id':'T1','dish_id':dish,'arrival_tick':1,'state':'scheduled'}]
+        q.elapsed = 1
+        events = []
+        q._step_reservations(events)
+        self.assertEqual([name for name, _ in events], ['reservation_arrived','customer_arrived'])
+        c = q.customers[0]
+        q._interact(q.stoves[0],0,events)
+        self.assertEqual(c['base_price'], int(q.menu[dish]['price']*1.5))
+        q.stoves[0]['state'] = 'ready'
+        q._interact(q.stoves[0],0,events)
+        table = next(t for t in q.tables if t['id']=='T1')
+        q._interact(table,1,events)
+        self.assertEqual(q.reservations[0]['state'],'served')
+        self.assertEqual(events[-1][0],'reservation_served')
+        r = {'id':'R2','table_id':'T2','dish_id':dish,'arrival_tick':1,'state':'scheduled'}
+        q.reservations.append(r)
+        q.fresh_items=[]
+        before=q.reputation
+        q._step_reservations(events)
+        q._step_reservations(events)
+        self.assertEqual(r['reason'],'stock')
+        self.assertEqual(q.reputation,max(q.t['reputation_min'],before-1))
+        self.assertEqual(sum(name=='reservation_failed' for name,_ in events),1)
+
+    def test_live_menu_uses_all_harvested_ingredients(self):
+        game=LiveGame('gather',load_contract()['tuning'],{},3)
+        tuning=game.tuning
+        ingredients=set(tuning['gather']['fish_yield'])|{n['kind'] for n in tuning['gather']['nodes']}
+        used={kind for dish in tuning['menu'].values() for kind in dish['recipe']}
+        self.assertFalse(ingredients-used)
+
     def setUp(self):
         self.t = load_contract()['tuning']
 
@@ -256,4 +290,42 @@ class LiveWorldTest(unittest.TestCase):
         ev_alert = sim.step(inp('interact'))
         self.assertTrue(any(e[0] == 'police_alerted' for e in ev_alert))
         self.assertEqual(sim.cong_an['state'], 'chasing')
+
+    def test_jack_performance_and_tip_bonus(self):
+        g = LiveGame('quan', self.t, {}, 1)
+        sim = g.session.sim
+        self.assertIn('jack', sim.snapshot())
+        # Kích hoạt Jack bước vào sân khấu
+        sim.jack['timer'] = 1
+        ev_arr = sim.step(inp())
+        self.assertTrue(any(e[0] == 'jack_arrived' for e in ev_arr))
+        self.assertEqual(sim.jack['state'], 'entering')
+        # Đến sân khấu -> bắt đầu hát Thiên Lý Ơi
+        sim.jack['pos'] = list(sim.jack['target'])
+        ev_sing = sim.step(inp())
+        self.assertTrue(any(e[0] == 'jack_sing_start' for e in ev_sing))
+        self.assertEqual(sim.jack['state'], 'singing')
+        # Thử khách ăn xong trả tiền trong lúc Jack hát -> được cộng thêm tiền tip bonus
+        dish_id = list(sim.menu.keys())[0]
+        price = sim.menu[dish_id]['price']
+        sim.customers.append({
+            'id': 'C99', 'table_id': 'T1', 'state': 'eating',
+            'dish_id': dish_id, 'eat_ticks_left': 1, 'tip': 10
+        })
+        init_money = sim.money
+        ev_paid = sim.step(inp())
+        paid_ev = next(e for e in ev_paid if e[0] == 'paid')
+        expected_amount = price + 10 + sim.jack_cfg.get('tip_bonus', 20)
+        self.assertEqual(paid_ev[1]['amount'], expected_amount)
+        self.assertEqual(sim.money, init_money + expected_amount)
+        # Giữa bài hát: khán giả tặng thêm tiền cho quán
+        sim.jack['timer'] = int(round(sim.jack_cfg.get('sing_duration_s', 26) * 30))
+        ev_fan = sim.step(inp())
+        self.assertTrue(any(e[0] == 'jack_fan_donation' for e in ev_fan))
+        # Hết bài hát -> Jack chào tạm biệt và rời đi
+        sim.jack['timer'] = 0
+        ev_leave = sim.step(inp())
+        self.assertTrue(any(e[0] == 'jack_left' for e in ev_leave))
+        self.assertEqual(sim.jack['state'], 'leaving')
+
 

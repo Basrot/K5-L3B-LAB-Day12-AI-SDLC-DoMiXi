@@ -1,5 +1,6 @@
 {
   "gather": {
+    "live_fish_speed": 0.65,
     "duration_s": 420,
     "bounds": {
       "x": [
@@ -67,21 +68,51 @@
     "tax_amount": 50,
     "invuln_ticks": 180,
     "quote": "Bảnh xin nhẹ 50k bảo kê rồi lượn nhé!",
-    "entrance_pos": [8.0, 0.5],
+    "entrance_pos": [
+      8.0,
+      0.5
+    ],
     "spawn_cooldown_s": 15,
     "roam_duration_s": 20,
-    "patrol_bounds": {"x": [3.0, 14.0], "z": [2.0, 8.5]}
+    "patrol_bounds": {
+      "x": [
+        3.0,
+        14.0
+      ],
+      "z": [
+        2.0,
+        8.5
+      ]
+    }
   },
   "cong_an": {
     "label": "Chú Công An",
     "speed": 2.0,
     "chase_speed": 4.2,
     "interact_radius": 1.6,
-    "entrance_pos": [8.0, 0.5],
+    "entrance_pos": [
+      8.0,
+      0.5
+    ],
     "patrol_cooldown_s": 25,
     "patrol_duration_s": 15,
     "reward_money": 50,
     "reward_reputation": 0.5
+  },
+  "jack": {
+    "label": "Ca Sĩ Jack (J97)",
+    "song_title": "Thiên Lý Ơi",
+    "speed": 2.2,
+    "entrance_pos": [8.0, 0.5],
+    "stage_pos": [5.5, 5.2],
+    "first_spawn_s": 35,
+    "cooldown_s": 45,
+    "sing_duration_s": 26,
+    "tip_bonus": 20,
+    "fan_donation": 40,
+    "quote_arrive": "Jack chào cả nhà quán Út Sen! Nay tặng quán bài Thiên Lý Ơi nha!",
+    "quote_singing": "Thiên lý ơi, em có nghe chăng lời ru chiều nay... 🎵",
+    "quote_leave": "Cảm ơn quý khán giả quán Út Sen rất nhiều! Hẹn gặp lại nhé!"
   },
   "catalog": {
     "ca_linh": {
@@ -591,6 +622,22 @@
       },
       "cook_s": 6,
       "price": 75
+    },
+    "ca_chach_chien": {
+      "label": "Cá chạch chiên",
+      "recipe": {
+        "ca_chach": 1
+      },
+      "cook_s": 4,
+      "price": 55
+    },
+    "ca_vang_hap": {
+      "label": "Cá vàng hấp",
+      "recipe": {
+        "ca_vang": 1
+      },
+      "cook_s": 4,
+      "price": 60
     }
   },
   "dish_labels": {
@@ -648,5 +695,16 @@
     "spoiled_below": 7200,
     "gather_decay": 2,
     "quan_decay": 1
+  },
+  "reservations": {
+    "count": 2,
+    "table_hold_s": 30,
+    "price_multiplier": 1.5,
+    "failed_reputation_delta": -1,
+    "arrival_ticks": [
+      1800,
+      10799
+    ],
+    "patience_s": 60
   }
 }
