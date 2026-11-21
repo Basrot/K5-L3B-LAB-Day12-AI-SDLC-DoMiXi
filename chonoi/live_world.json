@@ -83,6 +83,21 @@
     "reward_money": 50,
     "reward_reputation": 0.5
   },
+  "jack": {
+    "label": "Ca Sĩ Jack (J97)",
+    "song_title": "Thiên Lý Ơi",
+    "speed": 2.2,
+    "entrance_pos": [8.0, 0.5],
+    "stage_pos": [5.5, 5.2],
+    "first_spawn_s": 35,
+    "cooldown_s": 45,
+    "sing_duration_s": 26,
+    "tip_bonus": 20,
+    "fan_donation": 40,
+    "quote_arrive": "Jack chào cả nhà quán Út Sen! Nay tặng quán bài Thiên Lý Ơi nha!",
+    "quote_singing": "Thiên lý ơi, em có nghe chăng lời ru chiều nay... 🎵",
+    "quote_leave": "Cảm ơn quý khán giả quán Út Sen rất nhiều! Hẹn gặp lại nhé!"
+  },
   "catalog": {
     "ca_linh": {
       "label": "Cá linh",

@@ -416,7 +416,7 @@ class _Handler(BaseHTTPRequestHandler):
                        '27-level-results.png', '29-intro-father-teaches-text.png',
                        '30-intro-father-injured-text.png', '31-intro-ut-sen-decides-text.png',
                        '32-intro-first-departure-text.png', '17-kha-banh.png', '18-cong-an.png',
-                       'chieu-troi-mua.mp3'}
+                       '19-jack.png', 'chieu-troi-mua.mp3', 'thien-ly-oi.mp3', 'thiên lý ơi.mp3'}
             if name not in allowed:
                 self._send(404, b'{}')
                 return
